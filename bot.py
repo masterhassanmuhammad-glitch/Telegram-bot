@@ -497,7 +497,68 @@ def process_user_msg(message):
     admin_states.pop(chat_id, None)
     bot.send_message(chat_id, "✅ تم إرسال استشارتك للإدارة الطبية بنجاح، ستصلك الإجابة هنا فور المراجعة.", reply_markup=ReplyKeyboardRemove())
     bot.send_message(chat_id, get_main_menu_text(), reply_markup=build_contextual_keyboard(0, chat_id))
+# ========================================================
+# 📬 نظام مراسلة الإدارة والرد على المشتركين
+# ========================================================
 
+# 1️⃣ استقبال طلب المراسلة وتوجيه رسالة المستخدم إلى الآدمن
+@bot.message_handler(func=lambda message: message.text == "📩 مراسلة الإدارة")
+def contact_admin_prompt(message):
+    msg = bot.send_message(
+        message.chat.id, 
+        "✍️ الرجاء كتابة استفسارك أو رسالتك الآن، وسنقوم بإيصالها للإدارة فوراً:"
+    )
+    # ننتظر من المستخدم إرسال رسالته التالية لنمررها للآدمن
+    bot.register_next_step_handler(msg, forward_to_admin)
+
+def forward_to_admin(message):
+    user_id = message.chat.id
+    user_name = message.from_user.first_name or "مستخدم"
+    user_text = message.text
+
+    if not user_text:
+        bot.send_message(user_id, "❌ عذراً، يمكنك إرسال نصوص فقط حالياً.")
+        return
+
+    # نص الرسالة التي ستصل إليك كآدمن (مهم جداً عدم تعديل سطر الـ ID ليعمل الرد)
+    admin_notification = (
+        f"📬 **رسالة جديدة من:** {user_name}\n"
+        f"**ID:** `{user_id}`\n\n"
+        f"**الرسالة:**\n{user_text}"
+    )
+
+    # إرسال الرسالة إلى حسابك (OWNER_ID) المستخرج من البيئة
+    bot.send_message(OWNER_ID, admin_notification, parse_mode="Markdown")
+    bot.send_message(user_id, "✅ تم إرسال رسالتك للإدارة بنجاح، وسيتم الرد عليك في أقرب وقت.")
+
+
+# 2️⃣ استقبال رد الآدمن (عندما تقوم بعمل Reply على رسالة البوت)
+@bot.message_handler(func=lambda message: message.chat.id == OWNER_ID and message.reply_to_message is not None)
+def handle_admin_reply(message):
+    try:
+        # قراءة النص الأصلي للرسالة التي يقوم الآدمن بالرد عليها
+        original_text = message.reply_to_message.text
+        
+        # استخراج الـ ID الخاص بالمشترك من النص
+        if "ID:" in original_text:
+            lines = original_text.split("\n")
+            target_user_id = None
+            for line in lines:
+                if "ID:" in line:
+                    # تنظيف السطر واستخراج الرقم فقط
+                    target_user_id = int(line.replace("ID:", "").strip())
+                    break
+            
+            if target_user_id:
+                # إرسال ردك مباشرة إلى المشترك
+                user_response = f"💬 **رد من الإدارة الطبية:**\n\n{message.text}"
+                bot.send_message(target_user_id, user_response, parse_mode="Markdown")
+                bot.send_message(OWNER_ID, "✅ تم إرسال ردك للمشترك بنجاح.")
+            else:
+                bot.send_message(OWNER_ID, "❌ لم أتمكن من العثور على معرف المستخدم (ID) في الرسالة.")
+    except Exception as e:
+        bot.send_message(OWNER_ID, f"❌ حدث خطأ أثناء محاولة إرسال الرد: {str(e)}")
+ 
 # ========================================================
 # 🚀 تشغيل خادم الـ Webhook
 # ========================================================
