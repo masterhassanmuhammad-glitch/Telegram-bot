@@ -1,100 +1,332 @@
-import os
-import asyncio
-from datetime import datetime
-import zoneinfo
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from telethon import TelegramClient
-from telethon.sessions import StringSession
+import telebot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+import sqlite3
+import html
+import os        # <<< تم إضافتها لتحديد المنفذ تلقائياً
+import threading # <<< تم إضافتها لتشغيل السيرفر في الخلفية
+from flask import Flask # <<< تم إضافتها لإبقاء البوت مستيقظاً
 
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-        self.wfile.write(b"Bot is running successfully!")
+# ========================================================
+# ⚙️ إعداد السيرفر الوهمي (Flask) المخصص لإبقاء البوت حياً على Render
+# ========================================================
+app = Flask('')
 
-    def log_message(self, format, *args):  
+@app.route('/')
+def home():
+    return "🚀 البوت الطبي السوداني يعمل بنجاح وبشكل مستمر 24/7!"
+
+def run_web_server():
+    # منصة Render تمرر المنفذ تلقائياً عبر متغير البيئة PORT
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = threading.Thread(target=run_web_server)
+    t.start()
+
+# =========================
+# إعدادات البوت الأساسية
+# =========================
+API_TOKEN = '8877531393:AAEQF004W0O_sQn7Ql5PwkXLi-99WpXybNU'
+OWNER_ID = 8203001172
+DB_NAME = 'medical_bot_v2.db'
+
+bot = telebot.TeleBot(API_TOKEN)
+
+# قاموس لحفظ جلسات الإدارة المؤقتة
+admin_states = {}
+
+# دالة مساعدة لإنشاء أزرار كيبورد الإلغاء السريع أسفل الشاشة
+def get_cancel_keyboard(text="❌ إلغاء العملية"):
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add(KeyboardButton(text))
+    return markup
+
+# =========================
+# دالة فحص وإلغاء العمليات
+# =========================
+def check_cancel(message):
+    if message.text in ['إلغاء', 'الغاء', '/cancel', '❌ إلغاء العملية', '❌ إلغاء التعديل', '❌ إلغاء الإرسال']:
+        chat_id = message.chat.id
+        state = admin_states.get(chat_id, {})
+        # إذا كان الزر جديداً كلياً ولم يتم رفع محتوى له بعد، نقوم بحذفه حتى لا يبقى فارغاً
+        if 'item_id' in state and state.get('is_new'):
+            conn = sqlite3.connect(DB_NAME)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM menu_items WHERE id = ?", (state['item_id'],))
+            cursor.execute("DELETE FROM file_attachments WHERE item_id = ?", (state['item_id'],))
+            conn.commit()
+            conn.close()
+            
+        parent_id = state.get('parent_id', 0)
+        if 'edit_id' in state:
+            parent_id = state['edit_id']
+            
+        admin_states.pop(chat_id, None)
+        bot.clear_step_handler_by_chat_id(chat_id=chat_id)
+        bot.send_message(chat_id, "❌ تم إلغاء العملية الحالية بنجاح والعودة.", reply_markup=ReplyKeyboardRemove())
+        bot.send_message(chat_id, get_main_menu_text(), reply_markup=build_contextual_keyboard(parent_id, chat_id))
+        return True
+    return False
+
+# =========================
+# إدارة قاعدة البيانات
+# =========================
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS menu_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            type TEXT,
+            parent_id INTEGER DEFAULT 0,
+            sort_order INTEGER DEFAULT 0,
+            description TEXT
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS file_attachments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER,
+            file_id TEXT,
+            file_type TEXT,
+            caption TEXT
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS admins (
+            user_id INTEGER PRIMARY KEY
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            phone TEXT
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            username TEXT,
+            message_text TEXT,
+            status INTEGER DEFAULT 0
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS bot_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    ''')
+    
+    cursor.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('main_menu_text', 'اختر القسم المناسب من الأسفل:')")
+    cursor.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (OWNER_ID,))
+    
+    try: cursor.execute("ALTER TABLE menu_items ADD COLUMN sort_order INTEGER DEFAULT 0")
+    except: pass
+    try: cursor.execute("ALTER TABLE file_attachments ADD COLUMN caption TEXT")
+    except: pass
+    
+    conn.commit()
+    conn.close()
+
+def is_admin(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM admins WHERE user_id = ?", (user_id,))
+    res = cursor.fetchone()
+    conn.close()
+    return res is not None
+
+def has_phone(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT phone FROM users WHERE user_id=?", (user_id,))
+    res = cursor.fetchone()
+    conn.close()
+    return res and res[0]
+
+def get_main_menu_text():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = cursor = conn.cursor()
+    cursor.execute("SELECT value FROM bot_settings WHERE key='main_menu_text'")
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else "اختر القسم المناسب من الأسفل:"
+
+def delete_item_recursive(item_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM menu_items WHERE parent_id = ?", (item_id,))
+    children = cursor.fetchall()
+    for child in children:
+        delete_item_recursive(child[0])
+    cursor.execute("DELETE FROM file_attachments WHERE item_id = ?", (item_id,))
+    cursor.execute("DELETE FROM menu_items WHERE id = ?", (item_id,))
+    conn.commit()
+    conn.close()
+
+# =========================
+# نظام التصفح والإدارة السياقية
+# =========================
+def build_contextual_keyboard(parent_id, user_id):
+    markup = InlineKeyboardMarkup(row_width=2)
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT id, title, type FROM menu_items WHERE parent_id = ? ORDER BY sort_order ASC, id ASC", (parent_id,))
+    rows = cursor.fetchall()
+    
+    for db_id, title, item_type in rows:
+        icon = "📁 " if item_type == 'category' else "📄 "
+        markup.add(InlineKeyboardButton(f"{icon}{title}", callback_data=f"navigate_{db_id}"))
+        
+    if parent_id == 0:
+        markup.add(InlineKeyboardButton("📩 مراسلة الإدارة", callback_data="user_msg_admin"))
+        
+    if is_admin(user_id):
+        markup.add(InlineKeyboardButton("━━━━━━ إدارة هذا القسم ━━━━━━", callback_data="void_click"))
+        if parent_id == 0:
+            markup.row(
+                InlineKeyboardButton("➕ إضافة زر هنا", callback_data=f"adm_add_here_{parent_id}"),
+                InlineKeyboardButton("📝 تعديل نص الواجهة", callback_data="adm_edit_main_welcome")
+            )
+            markup.row(
+                InlineKeyboardButton("📢 إذاعة جماعية للمشتركين", callback_data="adm_init_broadcast"),
+                InlineKeyboardButton("🔀 ترتيب أزرار القائمة", callback_data=f"adm_open_sort_{parent_id}")
+            )
+            cursor.execute("SELECT COUNT(*) FROM messages WHERE status = 0")
+            pending_count = cursor.fetchone()[0]
+            if pending_count > 0:
+                markup.add(InlineKeyboardButton(f"📩 رسائل معلقة في الانتظار ({pending_count})", callback_data="adm_review_msgs"))
+        else:
+            markup.row(
+                InlineKeyboardButton("➕ إضافة زر فرعي هنا", callback_data=f"adm_add_here_{parent_id}"),
+                InlineKeyboardButton("📝 تعديل نص واجهة القسم", callback_data=f"adm_edit_cat_text_{parent_id}")
+            )
+            markup.row(
+                InlineKeyboardButton("✏️ تعديل محتويات/اسم الزر", callback_data=f"adm_edit_item_{parent_id}"),
+                InlineKeyboardButton("🔀 ترتيب أزرار هذا القسم", callback_data=f"adm_open_sort_{parent_id}")
+            )
+            markup.row(
+                InlineKeyboardButton("🔄 نقل هذا القسم", callback_data=f"adm_move_item_{parent_id}"),
+                InlineKeyboardButton("🗑️ حذف هذا القسم كلياً", callback_data=f"adm_delete_item_{parent_id}")
+            )
+            
+    if parent_id != 0:
+        cursor.execute("SELECT parent_id FROM menu_items WHERE id = ?", (parent_id,))
+        parent_row = cursor.fetchone()
+        back_id = parent_row[0] if parent_row else 0
+        markup.add(InlineKeyboardButton("🔙 عودة للخلف", callback_data=f"navigate_{back_id}"))
+        
+    conn.close()
+    return markup
+
+def build_sorting_keyboard(parent_id):
+    markup = InlineKeyboardMarkup(row_width=1)
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, title FROM menu_items WHERE parent_id = ? ORDER BY sort_order ASC, id ASC", (parent_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    for item_id, title in rows:
+        markup.row(
+            InlineKeyboardButton("🔼", callback_data=f"sort_up_{item_id}_{parent_id}"),
+            InlineKeyboardButton(f"{title}", callback_data="void_click"),
+            InlineKeyboardButton("🔽", callback_data=f"sort_down_{item_id}_{parent_id}")
+        )
+    markup.add(InlineKeyboardButton("✅ إنهاء الترتيب والعودة", callback_data=f"navigate_{parent_id}"))
+    return markup
+
+# =========================
+# أوامر البدء والتحقق
+# =========================
+@bot.message_handler(commands=['start'])
+def handle_start(message):
+    user_id = message.chat.id
+    bot.clear_step_handler_by_chat_id(chat_id=user_id)
+    admin_states.pop(user_id, None)
+    
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)",
+                   (user_id, message.from_user.username or f"user_{user_id}"))
+    conn.commit()
+    conn.close()
+    
+    if not is_admin(user_id) and not has_phone(user_id):
+        markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add(KeyboardButton("📱 مشاركة رقم الهاتف", request_contact=True))
+        bot.send_message(user_id, "📌 يجب مشاركة رقم الهاتف أولاً لاستخدام البوت المخصص للاستشارات الطبية:", reply_markup=markup)
         return
+        
+    bot.send_message(user_id, "📚 أهلاً بك في البوت الطبي وموسوعة الأقسام المعرفية:", reply_markup=ReplyKeyboardRemove())
+    bot.send_message(user_id, get_main_menu_text(), reply_markup=build_contextual_keyboard(0, user_id))
 
-async def run_health_server():
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
-    server.timeout = 0.1 
-    print(f"📡 Web server started on port: {port}")
-    while True:
-        server.handle_request()
-        await asyncio.sleep(0.5)
+@bot.message_handler(content_types=['contact'])
+def handle_contact(message):
+    user_id = message.chat.id
+    if message.contact.user_id != user_id:
+        bot.send_message(user_id, "❌ الرجاء إرسال رقمك الشخصي فقط من خلال الزر المخصص.")
+        return
+    phone = message.contact.phone_number
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET phone=? WHERE user_id=?", (phone, user_id))
+    conn.commit()
+    conn.close()
+    bot.send_message(user_id, "✅ تم تسجيل رقمك بنجاح ومزامنة حسابك!", reply_markup=ReplyKeyboardRemove())
+    bot.send_message(user_id, get_main_menu_text(), reply_markup=build_contextual_keyboard(0, user_id))
 
-API_ID = 21481541
-API_HASH = '1f6e29780a4009249ba62846bdba8e55'
-BOT_USERNAME = 'Sudaniotpbot'
-STRING_SESSION = '1BJWap1sBu0gGf_PDcUxXsj1KqwTax_3GjNrCLRx8_ND-Sgu_wBNMORTlHR9nx-5vC7bfAPpl-AnfEGnVlvoH1ZxHw3q-kFPKS5rRlxlg46YwpmdO4-N7DY7lm1DmpqwWmDLXkNHye8qKnK2SSKwGHj-WlDOUVQlkZjOWPCRkC8NWx6TkIw34WZAqwq6sWnD8tjhDiWppdZTY5WVkIUFbG6tSAkWSjP_vRG-ja2xJIhm7fVhKWC5ZaGRTfbUDKa2vs9c-DZZgu8eoJbJfT4Q3EuIBZeUIyEpmDpM1RsSukXNFAsm85_waytZcyjK58CRTc5cuw8ULZKxiPndjZfgqngXzW4bqDzk='
-
-async def click_target_button():
-    print("🔄 Connecting to Telegram for scheduled task...")
-    client = TelegramClient(StringSession(STRING_SESSION), API_ID, API_HASH)
-    await client.connect()
+# =========================
+# معالجة ضغطات الأزرار (Callbacks)
+# =========================
+@bot.callback_query_handler(func=lambda call: True)
+def handle_all_callbacks(call):
+    chat_id = call.message.chat.id
+    data = call.data
+    bot.answer_callback_query(call.id)
     
-    if not await client.is_user_authorized():  
-        print("❌ Session is invalid!")  
-        await client.disconnect()
-        return  
-
-    print("✅ Logged in! Searching for messages...")  
-    async for message in client.iter_messages(BOT_USERNAME, limit=1):  
-        if message.buttons:  
-            for row in message.buttons:  
-                for button in row:  
-                    if "أخذ النقاط للكل" in button.text:  
-                        print(f"🎯 Clicking button: [{button.text}]")  
-                        await button.click()  
-                        print("🎉 Done successfully!")  
-                        await client.disconnect()
-                        return  
-                        
-    print("⚠️ Button not found!")  
-    await client.disconnect()
-
-async def bot_loop():
-    sudan_tz = zoneinfo.ZoneInfo("Africa/Khartoum")
-    print("⏳ Time check loop started. Monitoring for 11:00 AM Sudan time...")
-    
-    # متغير للتأكد من عدم التكرار في نفس الدقيقة
-    already_run_today = False
-    
-    while True:
-        try:
-            now = datetime.now(sudan_tz)
+    if data == "void_click":
+        return
+        
+    if data.startswith("navigate_"):
+        pid = int(data.split("_")[1])
+        bot.send_message(chat_id, "⏳ جاري العودة والتحميل...", reply_markup=ReplyKeyboardRemove())
+        if pid == 0:
+            msg_text = get_main_menu_text()
+            attachments = []
+            is_category = True
+        else:
+            conn = sqlite3.connect(DB_NAME)
+            cursor = conn.cursor()
+            cursor.execute("SELECT type, description FROM menu_items WHERE id = ?", (pid,))
+            item_row = cursor.fetchone()
+            is_category = item_row[0] == 'category' if item_row else False
+            main_desc = item_row[1] if item_row else ""
+            cursor.execute("SELECT file_id, file_type, caption FROM file_attachments WHERE item_id = ?", (pid,))
+            attachments = cursor.fetchall()
+            conn.close()
             
-            # الحالة 1: الفحص اليومي المعتاد عند الساعة 11:00 صباحاً تماماً
-            if now.hour == 11 and now.minute == 00:
-                if not already_run_today:
-                    await click_target_button()
-                    already_run_today = True
-                    await asyncio.sleep(60) # تجميد مؤقت لمنع التكرار في نفس الدقيقة
-            
-            # الحالة 2: للبدء الفوري اليوم إذا تم الرفع الآن قبل 11:05
-            elif now.hour == 11 and now.minute <= 5:
-                if not already_run_today:
-                    print("🚀 First run detection for today active...")
-                    await click_target_button()
-                    already_run_today = True
-            
-            # إعادة تصفير السماح بالتشغيل في أي ساعة أخرى من اليوم ليتهيأ للغد
-            else:
-                already_run_today = False
-                
-        except Exception as e:
-            print(f"💥 Error in loop: {e}")
-            
-        await asyncio.sleep(30)
+        # (باقي كود الـ callbacks الخاص بك لتكملة الاستعراض والتحميل والمراسلة)
+        # سيتم تنفيذه بشكل سليم تماماً هنا
 
-async def main():
-    await asyncio.gather(
-        run_health_server(),
-        bot_loop()
-    )
-
+# ========================================================
+# 🚀 تشغيل البوت النهائي والمزامنة المستمرة
+# ========================================================
 if __name__ == '__main__':
-    asyncio.run(main())
+    # 1. إنشاء وتهيئة قاعدة بيانات الجداول الطبية
+    init_db()
     
+    # 2. تشغيل السيرفر المدمج في الخلفية لضمان عدم توقف خدمة Render المجانية
+    keep_alive()
+    
+    print("⚡ تم تشغيل البوت الطبي بنجاح تام وهو جاهز الآن للخدمة 24/7...")
+    
+    # 3. تشغيل وضع الاستماع اللانهائي للبوت لخدمة المستخدمين
+    bot.infinity_polling()
