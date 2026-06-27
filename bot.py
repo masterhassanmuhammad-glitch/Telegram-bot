@@ -2,12 +2,12 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 import sqlite3
 import html
-import os        # <<< تم إضافتها لتحديد المنفذ تلقائياً
-import threading # <<< تم إضافتها لتشغيل السيرفر في الخلفية
-from flask import Flask # <<< تم إضافتها لإبقاء البوت مستيقظاً
+import os        # لتحديد منفذ السيرفر تلقائياً
+import threading # لتشغيل السيرفر في الخلفية
+from flask import Flask # لإبقاء البوت حياً على Render
 
 # ========================================================
-# ⚙️ إعداد السيرفر الوهمي (Flask) المخصص لإبقاء البوت حياً على Render
+# ⚙️ إعداد السيرفر الوهمي (Flask) لمنع توقف الخدمة على Render
 # ========================================================
 app = Flask('')
 
@@ -16,7 +16,6 @@ def home():
     return "🚀 البوت الطبي السوداني يعمل بنجاح وبشكل مستمر 24/7!"
 
 def run_web_server():
-    # منصة Render تمرر المنفذ تلقائياً عبر متغير البيئة PORT
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
@@ -49,7 +48,7 @@ def check_cancel(message):
     if message.text in ['إلغاء', 'الغاء', '/cancel', '❌ إلغاء العملية', '❌ إلغاء التعديل', '❌ إلغاء الإرسال']:
         chat_id = message.chat.id
         state = admin_states.get(chat_id, {})
-        # إذا كان الزر جديداً كلياً ولم يتم رفع محتوى له بعد، نقوم بحذفه حتى لا يبقى فارغاً
+        
         if 'item_id' in state and state.get('is_new'):
             conn = sqlite3.connect(DB_NAME)
             cursor = conn.cursor()
@@ -152,7 +151,7 @@ def has_phone(user_id):
 
 def get_main_menu_text():
     conn = sqlite3.connect(DB_NAME)
-    cursor = cursor = conn.cursor()
+    cursor = conn.cursor()
     cursor.execute("SELECT value FROM bot_settings WHERE key='main_menu_text'")
     row = cursor.fetchone()
     conn.close()
@@ -308,25 +307,40 @@ def handle_all_callbacks(call):
             cursor.execute("SELECT type, description FROM menu_items WHERE id = ?", (pid,))
             item_row = cursor.fetchone()
             is_category = item_row[0] == 'category' if item_row else False
-            main_desc = item_row[1] if item_row else ""
+            msg_text = item_row[1] if (item_row and item_row[1]) else "لا يوجد وصف متوفر لهذا القسم."
             cursor.execute("SELECT file_id, file_type, caption FROM file_attachments WHERE item_id = ?", (pid,))
             attachments = cursor.fetchall()
             conn.close()
-            
-        # (باقي كود الـ callbacks الخاص بك لتكملة الاستعراض والتحميل والمراسلة)
-        # سيتم تنفيذه بشكل سليم تماماً هنا
+
+        # إرسال المرفقات إن وجدت
+        if attachments:
+            for file_id, file_type, caption in attachments:
+                try:
+                    cap = caption if caption else ""
+                    if file_type == 'photo':
+                        bot.send_photo(chat_id, file_id, caption=cap)
+                    elif file_type == 'document':
+                        bot.send_document(chat_id, file_id, caption=cap)
+                    elif file_type == 'video':
+                        bot.send_video(chat_id, file_id, caption=cap)
+                except Exception as e:
+                    print(f"Error sending file: {e}")
+
+        # إرسال الرسالة النصية مع لوحة التحكم السياقية المتوافقة
+        bot.send_message(chat_id, msg_text, reply_markup=build_contextual_keyboard(pid, call.from_user.id))
 
 # ========================================================
-# 🚀 تشغيل البوت النهائي والمزامنة المستمرة
+# 🚀 نقطة الانطلاق والتشغيل الأساسية للمشروع
 # ========================================================
 if __name__ == '__main__':
-    # 1. إنشاء وتهيئة قاعدة بيانات الجداول الطبية
+    # 1. تهيئة جداول قاعدة البيانات
     init_db()
     
-    # 2. تشغيل السيرفر المدمج في الخلفية لضمان عدم توقف خدمة Render المجانية
+    # 2. تشغيل سيرفر ويب Flask في مسار مستقل لاستقبال اتصالات Render الفاحصة للـ Port
     keep_alive()
     
-    print("⚡ تم تشغيل البوت الطبي بنجاح تام وهو جاهز الآن للخدمة 24/7...")
+    print("⚡ تم تشغيل البوت الطبي بنجاح تام وهو جاهز الآن لخدمة المستخدمين 24/7...")
     
-    # 3. تشغيل وضع الاستماع اللانهائي للبوت لخدمة المستخدمين
+    # 3. تشغيل استقبال رسائل التليجرام بشكل لانهائي
     bot.infinity_polling()
+            
