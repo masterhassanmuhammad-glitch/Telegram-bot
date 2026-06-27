@@ -495,11 +495,25 @@ def process_user_msg(message):
 # ========================================================
 # 🚀 تشغيل خادم الـ Webhook
 # ========================================================
+# ========================================================
+# 🚀 تشغيل خادم الـ Webhook
+# ========================================================
 if __name__ == '__main__':
     if not DATABASE_URL:
         print("❌ خطأ: لم يتم ضبط متغير البيئة DATABASE_URL")
         exit(1)
         
     init_db()
-     RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL')
+    RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL')
+    
+    if RENDER_URL:
+        bot.remove_webhook()
+        bot.set_webhook(url=f"{RENDER_URL}/{API_TOKEN}")
+        print(f"✅ Webhook configured online at: {RENDER_URL}")
+    else:
+        bot.remove_webhook()
+        print("⚠️ Running locally for development.")
+        
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
     
