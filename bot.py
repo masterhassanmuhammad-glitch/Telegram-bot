@@ -1,19 +1,23 @@
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 import psycopg2
-bot = telebot.TeleBot(API_TOKEN, threaded=False)
-
+import os
+import logging
 from flask import Flask, request
+
+# 1️⃣ تفعيل السجلات أولاً
+logging.basicConfig(level=logging.INFO)
 
 # ========================================================
 # ⚙️ إعدادات البيئة والأمان (Environment Variables)
 # ========================================================
+# 2️⃣ يجب تعريف الـ API_TOKEN هنا أولاً ليقرأه بايثون
 API_TOKEN = os.environ.get('API_TOKEN', '8877531393:AAEQF004W0O_sQn7Ql5PwkXLi-99WpXybNU')
 OWNER_ID = int(os.environ.get('OWNER_ID', 8203001172))
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
+# 3️⃣ الآن ننشئ كائن البوت بعد أن أصبح التوكن معروفاً ومحدداً
 bot = telebot.TeleBot(API_TOKEN, threaded=False)
-
 app = Flask(__name__)
 
 # قاموس لحفظ جلسات الإدارة المؤقتة للخطوات المتتالية
