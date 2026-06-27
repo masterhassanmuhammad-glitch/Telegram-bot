@@ -501,4 +501,5 @@ if __name__ == '__main__':
         exit(1)
         
     init_db()
-    RENDER_URL = os.environ.get('RENDER_EXTERN
+     RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL')
+    
