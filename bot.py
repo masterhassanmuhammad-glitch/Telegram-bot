@@ -1,7 +1,8 @@
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 import psycopg2
-import os
+bot = telebot.TeleBot(API_TOKEN, threaded=False)
+
 from flask import Flask, request
 
 # ========================================================
@@ -11,7 +12,8 @@ API_TOKEN = os.environ.get('API_TOKEN', '8877531393:AAEQF004W0O_sQn7Ql5PwkXLi-99
 OWNER_ID = int(os.environ.get('OWNER_ID', 8203001172))
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
-bot = telebot.TeleBot(API_TOKEN)
+bot = telebot.TeleBot(API_TOKEN, threaded=False)
+
 app = Flask(__name__)
 
 # قاموس لحفظ جلسات الإدارة المؤقتة للخطوات المتتالية
