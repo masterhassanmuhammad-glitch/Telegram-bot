@@ -1,1 +1,4 @@
-telethon
+pyTelegramBotAPI
+flask
+urllib3
+requests
