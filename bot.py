@@ -2,40 +2,42 @@ import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 import sqlite3
 import html
-import os        # لتحديد منفذ السيرفر تلقائياً
-import threading # لتشغيل السيرفر في الخلفية
-from flask import Flask # لإبقاء البوت حياً على Render
+import os
+from flask import Flask, request
 
 # ========================================================
-# ⚙️ إعداد السيرفر الوهمي (Flask) لمنع توقف الخدمة على Render
+# ⚙️ إعدادات البيئة والأمان (Environment Variables)
 # ========================================================
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "🚀 البوت الطبي السوداني يعمل بنجاح وبشكل مستمر 24/7!"
-
-def run_web_server():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
-
-def keep_alive():
-    t = threading.Thread(target=run_web_server)
-    t.start()
-
-# =========================
-# إعدادات البوت الأساسية
-# =========================
-API_TOKEN = '8877531393:AAEQF004W0O_sQn7Ql5PwkXLi-99WpXybNU'
-OWNER_ID = 8203001172
+# يفضل دائماً جلب التوكن من إعدادات ريندر لحماية كودك، وإذا لم يجدها سيأخذ القيمة الافتراضية المكتوبة
+API_TOKEN = os.environ.get('API_TOKEN', '8877531393:AAEQF004W0O_sQn7Ql5PwkXLi-99WpXybNU')
+OWNER_ID = int(os.environ.get('OWNER_ID', 8203001172))
 DB_NAME = 'medical_bot_v2.db'
 
 bot = telebot.TeleBot(API_TOKEN)
+app = Flask(__name__)
 
 # قاموس لحفظ جلسات الإدارة المؤقتة
 admin_states = {}
 
+# ========================================================
+# 🌐 إعداد مسارات الـ Webhook لسيرفر Flask
+# ========================================================
+
+@app.route('/')
+def home():
+    return "🚀 البوت الطبي السوداني يعمل بنجاح وبشكل مستمر عبر الـ Webhook!", 200
+
+# المسار الخاص باستقبال رسائل تليجرام
+@app.route('/' + API_TOKEN, methods=['POST'])
+def getMessage():
+    json_string = request.get_data().decode('utf-8')
+    update = telebot.types.Update.de_json(json_string)
+    bot.process_new_updates([update])
+    return "!", 200
+
+# =========================
 # دالة مساعدة لإنشاء أزرار كيبورد الإلغاء السريع أسفل الشاشة
+# =========================
 def get_cancel_keyboard(text="❌ إلغاء العملية"):
     markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     markup.add(KeyboardButton(text))
@@ -312,7 +314,6 @@ def handle_all_callbacks(call):
             attachments = cursor.fetchall()
             conn.close()
 
-        # إرسال المرفقات إن وجدت
         if attachments:
             for file_id, file_type, caption in attachments:
                 try:
@@ -326,24 +327,28 @@ def handle_all_callbacks(call):
                 except Exception as e:
                     print(f"Error sending file: {e}")
 
-        # إرسال الرسالة النصية مع لوحة التحكم السياقية المتوافقة
         bot.send_message(chat_id, msg_text, reply_markup=build_contextual_keyboard(pid, call.from_user.id))
 
 # ========================================================
-# 🚀 تشغيل البوت النهائي
+# 🚀 بدء التشغيل وربط الـ Webhook تلقائياً
 # ========================================================
 if __name__ == '__main__':
-    # 1. تهيئة قاعدة البيانات
+    # 1. تهيئة قاعدة البيانات عند بدء التشغيل
     init_db()
     
-    # 2. تشغيل السيرفر للـ Render
-    keep_alive()
+    # 2. جلب رابط سيرفر ريندر الخارجي تلقائياً لربطه بالتليجرام
+    RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL')
     
-    # 3. خطوة الحل: إزالة أي Webhook عالق قبل بدء الاستماع
-    bot.remove_webhook()
+    if RENDER_URL:
+        bot.remove_webhook()
+        # نقوم بربط الـ webhook بالمسار الآمن المشفر بالتوكن الخاص بك
+        bot.set_webhook(url=f"{RENDER_URL}/{API_TOKEN}")
+        print(f"✅ Webhook set successfully to: {RENDER_URL}")
+    else:
+        print("⚠️ لم يتم العثور على RENDER_EXTERNAL_URL، البوت يعمل محلياً بدون الـ Webhook.")
+        bot.remove_webhook()
     
-    print("⚡ تم تشغيل البوت الطبي بنجاح - استجابة الأزرار مفعلة الآن...")
-    
-    # 4. تشغيل البوت مع تحديد مهلة زمنية للـ Polling
-    bot.infinity_polling(timeout=60, long_polling_timeout=60)
+    # 3. تشغيل سيرفر Flask ليتكفل بالعملية كاملة
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
     
