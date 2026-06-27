@@ -1,6 +1,6 @@
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-import sqlite3
+import psycopg2  # المكتبة الجديدة للاتصال بقاعدة البيانات السحابية
 import html
 import os
 from flask import Flask, request
@@ -8,10 +8,9 @@ from flask import Flask, request
 # ========================================================
 # ⚙️ إعدادات البيئة والأمان (Environment Variables)
 # ========================================================
-# يفضل دائماً جلب التوكن من إعدادات ريندر لحماية كودك، وإذا لم يجدها سيأخذ القيمة الافتراضية المكتوبة
 API_TOKEN = os.environ.get('API_TOKEN', '8877531393:AAEQF004W0O_sQn7Ql5PwkXLi-99WpXybNU')
 OWNER_ID = int(os.environ.get('OWNER_ID', 8203001172))
-DB_NAME = 'medical_bot_v2.db'
+DATABASE_URL = os.environ.get('DATABASE_URL')  # جلب رابط قاعدة البيانات من ريندر
 
 bot = telebot.TeleBot(API_TOKEN)
 app = Flask(__name__)
@@ -25,15 +24,18 @@ admin_states = {}
 
 @app.route('/')
 def home():
-    return "🚀 البوت الطبي السوداني يعمل بنجاح وبشكل مستمر عبر الـ Webhook!", 200
+    return "🚀 البوت الطبي السوداني يعمل بنجاح وبشكل مستمر عبر الـ Webhook السحابي!", 200
 
-# المسار الخاص باستقبال رسائل تليجرام
 @app.route('/' + API_TOKEN, methods=['POST'])
 def getMessage():
     json_string = request.get_data().decode('utf-8')
     update = telebot.types.Update.de_json(json_string)
     bot.process_new_updates([update])
     return "!", 200
+
+# دالة مساعدة لإنشاء الاتصال بقاعدة البيانات السحابية تلقائياً
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL)
 
 # =========================
 # دالة مساعدة لإنشاء أزرار كيبورد الإلغاء السريع أسفل الشاشة
@@ -52,10 +54,10 @@ def check_cancel(message):
         state = admin_states.get(chat_id, {})
         
         if 'item_id' in state and state.get('is_new'):
-            conn = sqlite3.connect(DB_NAME)
+            conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM menu_items WHERE id = ?", (state['item_id'],))
-            cursor.execute("DELETE FROM file_attachments WHERE item_id = ?", (state['item_id'],))
+            cursor.execute("DELETE FROM menu_items WHERE id = %s", (state['item_id'],))
+            cursor.execute("DELETE FROM file_attachments WHERE item_id = %s", (state['item_id'],))
             conn.commit()
             conn.close()
             
@@ -71,15 +73,16 @@ def check_cancel(message):
     return False
 
 # =========================
-# إدارة قاعدة البيانات
+# إدارة قاعدة البيانات السحابية (PostgreSQL)
 # =========================
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     cursor = conn.cursor()
     
+    # إنشاء الجداول بنظام PostgreSQL (SERIAL بديل لـ AUTOINCREMENT و BIGINT لمعرفات التليجرام)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS menu_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             title TEXT,
             type TEXT,
             parent_id INTEGER DEFAULT 0,
@@ -89,7 +92,7 @@ def init_db():
     ''')
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS file_attachments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             item_id INTEGER,
             file_id TEXT,
             file_type TEXT,
@@ -98,20 +101,20 @@ def init_db():
     ''')
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS admins (
-            user_id INTEGER PRIMARY KEY
+            user_id BIGINT PRIMARY KEY
         )
     ''')
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
+            user_id BIGINT PRIMARY KEY,
             username TEXT,
             phone TEXT
         )
     ''')
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT,
             username TEXT,
             message_text TEXT,
             status INTEGER DEFAULT 0
@@ -124,35 +127,41 @@ def init_db():
         )
     ''')
     
-    cursor.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('main_menu_text', 'اختر القسم المناسب من الأسفل:')")
-    cursor.execute("INSERT OR IGNORE INTO admins (user_id) VALUES (?)", (OWNER_ID,))
+    # إدخال البيانات الافتراضية بأمان منعاً للتكرار
+    cursor.execute("INSERT INTO bot_settings (key, value) VALUES ('main_menu_text', 'اختر القسم المناسب من الأسفل:') ON CONFLICT (key) DO NOTHING")
+    cursor.execute("INSERT INTO admins (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (OWNER_ID,))
     
-    try: cursor.execute("ALTER TABLE menu_items ADD COLUMN sort_order INTEGER DEFAULT 0")
-    except: pass
-    try: cursor.execute("ALTER TABLE file_attachments ADD COLUMN caption TEXT")
-    except: pass
+    # التأكد من وجود الأعمدة الإضافية بأمان في بيئة PostgreSQL
+    try:
+        cursor.execute("ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0")
+    except Exception:
+        conn.rollback()
+    try:
+        cursor.execute("ALTER TABLE file_attachments ADD COLUMN IF NOT EXISTS caption TEXT")
+    except Exception:
+        conn.rollback()
     
     conn.commit()
     conn.close()
 
 def is_admin(user_id):
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM admins WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT 1 FROM admins WHERE user_id = %s", (user_id,))
     res = cursor.fetchone()
     conn.close()
     return res is not None
 
 def has_phone(user_id):
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT phone FROM users WHERE user_id=?", (user_id,))
+    cursor.execute("SELECT phone FROM users WHERE user_id=%s", (user_id,))
     res = cursor.fetchone()
     conn.close()
     return res and res[0]
 
 def get_main_menu_text():
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT value FROM bot_settings WHERE key='main_menu_text'")
     row = cursor.fetchone()
@@ -160,14 +169,14 @@ def get_main_menu_text():
     return row[0] if row else "اختر القسم المناسب من الأسفل:"
 
 def delete_item_recursive(item_id):
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM menu_items WHERE parent_id = ?", (item_id,))
+    cursor.execute("SELECT id FROM menu_items WHERE parent_id = %s", (item_id,))
     children = cursor.fetchall()
     for child in children:
         delete_item_recursive(child[0])
-    cursor.execute("DELETE FROM file_attachments WHERE item_id = ?", (item_id,))
-    cursor.execute("DELETE FROM menu_items WHERE id = ?", (item_id,))
+    cursor.execute("DELETE FROM file_attachments WHERE item_id = %s", (item_id,))
+    cursor.execute("DELETE FROM menu_items WHERE id = %s", (item_id,))
     conn.commit()
     conn.close()
 
@@ -176,10 +185,10 @@ def delete_item_recursive(item_id):
 # =========================
 def build_contextual_keyboard(parent_id, user_id):
     markup = InlineKeyboardMarkup(row_width=2)
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     cursor = conn.cursor()
     
-    cursor.execute("SELECT id, title, type FROM menu_items WHERE parent_id = ? ORDER BY sort_order ASC, id ASC", (parent_id,))
+    cursor.execute("SELECT id, title, type FROM menu_items WHERE parent_id = %s ORDER BY sort_order ASC, id ASC", (parent_id,))
     rows = cursor.fetchall()
     
     for db_id, title, item_type in rows:
@@ -219,7 +228,7 @@ def build_contextual_keyboard(parent_id, user_id):
             )
             
     if parent_id != 0:
-        cursor.execute("SELECT parent_id FROM menu_items WHERE id = ?", (parent_id,))
+        cursor.execute("SELECT parent_id FROM menu_items WHERE id = %s", (parent_id,))
         parent_row = cursor.fetchone()
         back_id = parent_row[0] if parent_row else 0
         markup.add(InlineKeyboardButton("🔙 عودة للخلف", callback_data=f"navigate_{back_id}"))
@@ -229,9 +238,9 @@ def build_contextual_keyboard(parent_id, user_id):
 
 def build_sorting_keyboard(parent_id):
     markup = InlineKeyboardMarkup(row_width=1)
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, title FROM menu_items WHERE parent_id = ? ORDER BY sort_order ASC, id ASC", (parent_id,))
+    cursor.execute("SELECT id, title FROM menu_items WHERE parent_id = %s ORDER BY sort_order ASC, id ASC", (parent_id,))
     rows = cursor.fetchall()
     conn.close()
     
@@ -253,9 +262,9 @@ def handle_start(message):
     bot.clear_step_handler_by_chat_id(chat_id=user_id)
     admin_states.pop(user_id, None)
     
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)",
+    cursor.execute("INSERT INTO users (user_id, username) VALUES (%s, %s) ON CONFLICT (user_id) DO NOTHING",
                    (user_id, message.from_user.username or f"user_{user_id}"))
     conn.commit()
     conn.close()
@@ -276,9 +285,9 @@ def handle_contact(message):
         bot.send_message(user_id, "❌ الرجاء إرسال رقمك الشخصي فقط من خلال الزر المخصص.")
         return
     phone = message.contact.phone_number
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET phone=? WHERE user_id=?", (phone, user_id))
+    cursor.execute("UPDATE users SET phone=%s WHERE user_id=%s", (phone, user_id))
     conn.commit()
     conn.close()
     bot.send_message(user_id, "✅ تم تسجيل رقمك بنجاح ومزامنة حسابك!", reply_markup=ReplyKeyboardRemove())
@@ -304,13 +313,13 @@ def handle_all_callbacks(call):
             attachments = []
             is_category = True
         else:
-            conn = sqlite3.connect(DB_NAME)
+            conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT type, description FROM menu_items WHERE id = ?", (pid,))
+            cursor.execute("SELECT type, description FROM menu_items WHERE id = %s", (pid,))
             item_row = cursor.fetchone()
             is_category = item_row[0] == 'category' if item_row else False
             msg_text = item_row[1] if (item_row and item_row[1]) else "لا يوجد وصف متوفر لهذا القسم."
-            cursor.execute("SELECT file_id, file_type, caption FROM file_attachments WHERE item_id = ?", (pid,))
+            cursor.execute("SELECT file_id, file_type, caption FROM file_attachments WHERE item_id = %s", (pid,))
             attachments = cursor.fetchall()
             conn.close()
 
@@ -333,22 +342,26 @@ def handle_all_callbacks(call):
 # 🚀 بدء التشغيل وربط الـ Webhook تلقائياً
 # ========================================================
 if __name__ == '__main__':
-    # 1. تهيئة قاعدة البيانات عند بدء التشغيل
+    # 1. التحقق من وجود رابط اتصال بالخادم السحابي أولاً
+    if not DATABASE_URL:
+        print("❌ خطأ: لم يتم العثور على متغير البيئة DATABASE_URL في إعدادات ريندر!")
+        exit(1)
+        
+    # 2. تهيئة قاعدة البيانات السحابية عند بدء التشغيل
     init_db()
     
-    # 2. جلب رابط سيرفر ريندر الخارجي تلقائياً لربطه بالتليجرام
+    # 3. جلب رابط سيرفر ريندر الخارجي تلقائياً لربطه بالتليجرام
     RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL')
     
     if RENDER_URL:
         bot.remove_webhook()
-        # نقوم بربط الـ webhook بالمسار الآمن المشفر بالتوكن الخاص بك
         bot.set_webhook(url=f"{RENDER_URL}/{API_TOKEN}")
         print(f"✅ Webhook set successfully to: {RENDER_URL}")
     else:
         print("⚠️ لم يتم العثور على RENDER_EXTERNAL_URL، البوت يعمل محلياً بدون الـ Webhook.")
         bot.remove_webhook()
     
-    # 3. تشغيل سيرفر Flask ليتكفل بالعملية كاملة
+    # 4. تشغيل سيرفر Flask ليتكفل بالعملية كاملة
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
     
