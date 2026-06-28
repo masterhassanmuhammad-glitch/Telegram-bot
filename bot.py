@@ -638,9 +638,9 @@ def send_response_to_user(message, target_id):
         bot.send_message(message.chat.id, "✅ تم إرسال ردك إلى المشترك بنجاح.")
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ فشل إرسال الرد: {e}")
-
+#
 # ========================================================
-# ➕ نظام إضافة آدمن جديد (خاص بالمالك الأساسي)
+# ➕ نظام إضافة آدمن جديد (مع ميزة إلغاء العملية والتراجع)
 # ========================================================
 @bot.message_handler(commands=['addadmin'])
 def add_admin_command(message):
@@ -648,14 +648,27 @@ def add_admin_command(message):
         bot.send_message(message.chat.id, "❌ هذا الأمر مخصص للمالك الأساسي للمشروع فقط.")
         return
     
-    msg = bot.send_message(message.chat.id, "🎯 من فضلك أرسل الـ ID الرقمي للآدمن الجديد الآن:")
+    msg = bot.send_message(
+        message.chat.id, 
+        "🎯 من فضلك أرسل الـ ID الرقمي للآدمن الجديد الآن.\n\n"
+        "🔙 للتراجع، يمكنك كتابة كلمة ( **إلغاء** ) أو إرسال /cancel في أي وقت.",
+        parse_mode="Markdown"
+    )
     bot.register_next_step_handler(msg, save_admin_to_db)
 
 def save_admin_to_db(message):
     if message.chat.id != OWNER_ID:
         return
+    
+    user_input = message.text.strip()
+    
+    # 🛑 فحص هل طلب المالك إلغاء العملية والتراجع؟
+    if user_input in ["إلغاء", "الغاء", "/cancel", "cancel"]:
+        bot.send_message(OWNER_ID, "🔙 تم إلغاء عملية إضافة الآدمن والتراجع بنجاح.")
+        return
+        
     try:
-        new_id = int(message.text.strip())
+        new_id = int(user_input)
         conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
         cursor.execute("INSERT INTO bot_admins (admin_id) VALUES (%s) ON CONFLICT DO NOTHING;", (new_id,))
@@ -664,7 +677,11 @@ def save_admin_to_db(message):
         conn.close()
         bot.send_message(OWNER_ID, f"✅ تم إضافة الآدمن الجديد بنجاح! معرفه الرقمي: `{new_id}`", parse_mode="Markdown")
     except ValueError:
-        bot.send_message(OWNER_ID, "❌ خطأ! يجب إرسال رقم الـ ID فقط (أرقام بدون حروف).")
+        bot.send_message(
+            OWNER_ID, 
+            "❌ خطأ! الـ ID المرسل غير صحيح (يجب أن يتكون من أرقام فقط).\n"
+            "تم إغلاق الطلب تلقائياً، يمكنك البدء من جديد باستخدام الأمر /addadmin"
+        )
     except Exception as e:
         bot.send_message(OWNER_ID, f"❌ حدث خطأ أثناء الحفظ في قاعدة البيانات: {e}")
         
