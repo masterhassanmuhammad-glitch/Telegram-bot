@@ -501,17 +501,55 @@ def process_user_msg(message):
 # 📬 نظام مراسلة الإدارة والرد على المشتركين
 # ========================================================
 
-# 1️⃣ استقبال طلب المراسلة وتوجيه رسالة المستخدم إلى الآدمن
+# ========================================================
+# ⚙️ إنشاء جدول المشرفين (عند تشغيل البوت)
+# ========================================================
+def init_admin_db():
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bot_admins (
+                admin_id BIGINT PRIMARY KEY
+            );
+        """)
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        logging.error(f"Error initializing admins table: {e}")
+
+# تفعيل الجدول تلقائياً
+init_admin_db()
+
+# دالة التحقق من الصلاحيات
+def is_it_admin(user_id):
+    if user_id == OWNER_ID:
+        return True
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM bot_admins WHERE admin_id = %s;", (user_id,))
+        res = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return res is not None
+    except:
+        return False
+
+# ========================================================
+# 📬 نظام مراسلة الإدارة المتطور (عرض البيانات + أزرار التحكم)
+# ========================================================
+
 @bot.message_handler(func=lambda message: message.text == "📩 مراسلة الإدارة")
 def contact_admin_prompt(message):
     msg = bot.send_message(
         message.chat.id, 
         "✍️ الرجاء كتابة استفسارك أو رسالتك الآن، وسنقوم بإيصالها للإدارة فوراً:"
     )
-    # ننتظر من المستخدم إرسال رسالته التالية لنمررها للآدمن
-    bot.register_next_step_handler(msg, forward_to_admin)
+    bot.register_next_step_handler(msg, forward_to_admin_panel)
 
-def forward_to_admin(message):
+def forward_to_admin_panel(message):
     user_id = message.chat.id
     user_name = message.from_user.first_name or "مستخدم"
     user_text = message.text
@@ -520,45 +558,116 @@ def forward_to_admin(message):
         bot.send_message(user_id, "❌ عذراً، يمكنك إرسال نصوص فقط حالياً.")
         return
 
-    # نص الرسالة التي ستصل إليك كآدمن (مهم جداً عدم تعديل سطر الـ ID ليعمل الرد)
-    admin_notification = (
-        f"📬 **رسالة جديدة من:** {user_name}\n"
-        f"**ID:** `{user_id}`\n\n"
-        f"**الرسالة:**\n{user_text}"
+    # جلب رقم الهاتف تلقائياً من قاعدة البيانات
+    phone_number = "غير مسجل أو غير معروف"
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        cursor.execute("SELECT phone FROM users WHERE user_id = %s;", (user_id,))
+        row = cursor.fetchone()
+        if row:
+            phone_number = row[0]
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        logging.error(f"Error fetching phone: {e}")
+
+    # صياغة الكرت التعريفي للرسالة
+    admin_card = (
+        f"📬 **رسالة جديدة واردة للمشرفين:**\n\n"
+        f"👤 **المرسل:** {user_name}\n"
+        f"🆔 **الـ ID:** `{user_id}`\n"
+        f"📞 **الهاتف:** `{phone_number}`\n\n"
+        f"💬 **نص الرسالة:**\n{user_text}"
     )
 
-    # إرسال الرسالة إلى حسابك (OWNER_ID) المستخرج من البيئة
-    bot.send_message(OWNER_ID, admin_notification, parse_mode="Markdown")
+    # إنشاء الأزرار التفاعلية أسفل الرسالة
+    markup = InlineKeyboardMarkup()
+    markup.row(
+        InlineKeyboardButton("✍️ الرد على الرسالة", callback_data=f"reply_{user_id}"),
+        InlineKeyboardButton("❌ حذف الرسالة", callback_data="delete_msg")
+    )
+
+    # إرسال الرسالة لك (المالك)
+    bot.send_message(OWNER_ID, admin_card, parse_mode="Markdown", reply_markup=markup)
+    
+    # إرسال الرسالة لباقي المشرفين المضافين
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        cursor.execute("SELECT admin_id FROM bot_admins;")
+        all_admins = cursor.fetchall()
+        for admin in all_admins:
+            if admin[0] != OWNER_ID:
+                bot.send_message(admin[0], admin_card, parse_mode="Markdown", reply_markup=markup)
+        cursor.close()
+        conn.close()
+    except:
+        pass
+
     bot.send_message(user_id, "✅ تم إرسال رسالتك للإدارة بنجاح، وسيتم الرد عليك في أقرب وقت.")
 
+# ========================================================
+# ⚙️ معالجة أزرار التحكم (الرد والحذف)
+# ========================================================
+@bot.callback_query_handler(func=lambda call: call.data.startswith("reply_") or call.data == "delete_msg")
+def handle_admin_actions(call):
+    if not is_it_admin(call.from_user.id):
+        bot.answer_callback_query(call.id, "❌ ليس لديك صلاحية آدمن للقيام بهذا.", show_alert=True)
+        return
 
-# 2️⃣ استقبال رد الآدمن (عندما تقوم بعمل Reply على رسالة البوت)
-@bot.message_handler(func=lambda message: message.chat.id == OWNER_ID and message.reply_to_message is not None)
-def handle_admin_reply(message):
-    try:
-        # قراءة النص الأصلي للرسالة التي يقوم الآدمن بالرد عليها
-        original_text = message.reply_to_message.text
-        
-        # استخراج الـ ID الخاص بالمشترك من النص
-        if "ID:" in original_text:
-            lines = original_text.split("\n")
-            target_user_id = None
-            for line in lines:
-                if "ID:" in line:
-                    # تنظيف السطر واستخراج الرقم فقط
-                    target_user_id = int(line.replace("ID:", "").strip())
-                    break
+    # إجراء حذف الرسالة لتنظيف المحادثة
+    if call.data == "delete_msg":
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+            bot.answer_callback_query(call.id, "🗑️ تم حذف الرسالة بنجاح")
+        except:
+            bot.answer_callback_query(call.id, "❌ تعذر حذف الرسالة")
             
-            if target_user_id:
-                # إرسال ردك مباشرة إلى المشترك
-                user_response = f"💬 **رد من الإدارة الطبية:**\n\n{message.text}"
-                bot.send_message(target_user_id, user_response, parse_mode="Markdown")
-                bot.send_message(OWNER_ID, "✅ تم إرسال ردك للمشترك بنجاح.")
-            else:
-                bot.send_message(OWNER_ID, "❌ لم أتمكن من العثور على معرف المستخدم (ID) في الرسالة.")
+    # إجراء الرد السريع
+    elif call.data.startswith("reply_"):
+        target_id = int(call.data.split("_")[1])
+        bot.answer_callback_query(call.id)
+        msg = bot.send_message(call.message.chat.id, "✍️ اكتب الآن الرد الذي تريد إرساله للمشترك:")
+        bot.register_next_step_handler(msg, send_response_to_user, target_id)
+
+def send_response_to_user(message, target_id):
+    try:
+        reply_text = f"💬 **رد من الإدارة الطبية:**\n\n{message.text}"
+        bot.send_message(target_id, reply_text, parse_mode="Markdown")
+        bot.send_message(message.chat.id, "✅ تم إرسال ردك إلى المشترك بنجاح.")
     except Exception as e:
-        bot.send_message(OWNER_ID, f"❌ حدث خطأ أثناء محاولة إرسال الرد: {str(e)}")
- 
+        bot.send_message(message.chat.id, f"❌ فشل إرسال الرد: {e}")
+
+# ========================================================
+# ➕ نظام إضافة آدمن جديد (خاص بالمالك الأساسي)
+# ========================================================
+@bot.message_handler(commands=['addadmin'])
+def add_admin_command(message):
+    if message.chat.id != OWNER_ID:
+        bot.send_message(message.chat.id, "❌ هذا الأمر مخصص للمالك الأساسي للمشروع فقط.")
+        return
+    
+    msg = bot.send_message(message.chat.id, "🎯 من فضلك أرسل الـ ID الرقمي للآدمن الجديد الآن:")
+    bot.register_next_step_handler(msg, save_admin_to_db)
+
+def save_admin_to_db(message):
+    if message.chat.id != OWNER_ID:
+        return
+    try:
+        new_id = int(message.text.strip())
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO bot_admins (admin_id) VALUES (%s) ON CONFLICT DO NOTHING;", (new_id,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        bot.send_message(OWNER_ID, f"✅ تم إضافة الآدمن الجديد بنجاح! معرفه الرقمي: `{new_id}`", parse_mode="Markdown")
+    except ValueError:
+        bot.send_message(OWNER_ID, "❌ خطأ! يجب إرسال رقم الـ ID فقط (أرقام بدون حروف).")
+    except Exception as e:
+        bot.send_message(OWNER_ID, f"❌ حدث خطأ أثناء الحفظ في قاعدة البيانات: {e}")
+        
 # ========================================================
 # 🚀 تشغيل خادم الـ Webhook
 # ========================================================
