@@ -4,12 +4,18 @@ from flask import Flask, request
 
 from config import API_TOKEN, PORT, RENDER_EXTERNAL_URL
 from database import init_db, init_settings
+
+# استيراد كافة مجمعات المعالجات من ملفاتها الخاصة
 from handlers import register_handlers
+from consultation import register_consultation_handlers
+from files import register_file_handlers
+from broadcast import register_broadcast_handlers
+from users import register_user_handlers
+from admin import register_admin_handlers
 
 # ============================================
 # LOGGING
 # ============================================
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
@@ -18,68 +24,71 @@ logging.basicConfig(
 # ============================================
 # BOT INIT
 # ============================================
-
 bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML")
 
 # ============================================
 # FLASK APP (FOR WEBHOOK)
 # ============================================
-
 app = Flask(__name__)
 
 # ============================================
 # INIT DATABASE
 # ============================================
-
 init_db()
 init_settings(owner_id=8203001172)
 
 # ============================================
-# REGISTER HANDLERS
+# REGISTER ALL HANDLERS (ربط كافة الملفات بالبوت)
 # ============================================
-
 register_handlers(bot)
+register_consultation_handlers(bot)
+register_file_handlers(bot)
+register_broadcast_handlers(bot)
+register_user_handlers(bot)
+register_admin_handlers(bot)
+
+# ============================================
+# HEALTH CHECK ROUTE (حل مشكلة الـ 404 على Render)
+# ============================================
+@app.route("/", methods=["GET"])
+def index():
+    return "MedicalBot is running and healthy! 🏥", 200
 
 # ============================================
 # WEBHOOK ROUTE
 # ============================================
-
 @app.route(f"/{API_TOKEN}", methods=["POST"])
 def webhook():
-    json_str = request.get_data().decode("utf-8")
-    update = telebot.types.Update.de_json(json_str)
-    bot.process_new_updates([update])
-    return "OK", 200
-
+    if request.headers.get('content-type') == 'application/json':
+        json_str = request.get_data().decode("utf-8")
+        update = telebot.types.Update.de_json(json_str)
+        bot.process_new_updates([update])
+        return "OK", 200
+    else:
+        return "Invalid request", 400
 
 # ============================================
 # SET WEBHOOK
 # ============================================
-
 def set_webhook():
     if RENDER_EXTERNAL_URL:
-        url = f"{RENDER_EXTERNAL_URL}/{API_TOKEN}"
+        url = f"{RENDER_EXTERNAL_URL.rstrip('/')}/{API_TOKEN}"
         bot.remove_webhook()
         bot.set_webhook(url=url)
         logging.info(f"Webhook set to: {url}")
     else:
         logging.warning("RENDER_EXTERNAL_URL not set. Using polling.")
 
-
 # ============================================
 # START BOT
 # ============================================
-
 if __name__ == "__main__":
-
     set_webhook()
 
     if RENDER_EXTERNAL_URL:
-        # Webhook mode (Render / production)
         logging.info("Starting Flask server (Webhook mode)")
         app.run(host="0.0.0.0", port=PORT)
-
     else:
-        # Polling mode (local testing)
         logging.info("Starting bot (Polling mode)")
         bot.infinity_polling()
+        
