@@ -211,4 +211,17 @@ def register_handlers(bot):
             bot.answer_callback_query(call.id, "تم الإلغاء")
         except Exception as e:
             logging.error(f"Error answering callback: {e}")
-            
+
+                # ============================================
+    # 🕵️‍♂️ كاشف الأزرار العمومي (ضعه في آخر ملف handlers.py)
+    # ============================================
+    @bot.callback_query_handler(func=lambda call: True)
+    def catch_all_callbacks(call: CallbackQuery):
+        # هذا السطر سيجبر التليجرام على إظهار نافذة منبثقة تخبرنا ماذا يرسل الزر بالظبط
+        bot.answer_callback_query(
+            call.id, 
+            text=f"⚠️ زر غير مـُعرّف في الكود!\nالبيانات المرسلة: {call.data}", 
+            show_alert=True
+        )
+        logging.warning(f"Unmatched callback data received: {call.data}")
+        
