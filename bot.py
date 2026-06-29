@@ -1,3 +1,4 @@
+print("BOT STARTING...")
 import telebot
 import logging
 from flask import Flask, request
