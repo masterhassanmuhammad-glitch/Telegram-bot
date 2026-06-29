@@ -1,4 +1,5 @@
 from telebot.types import Message, CallbackQuery
+import logging
 
 from database import execute
 from keyboards import cancel_keyboard
@@ -19,6 +20,12 @@ def register_file_handlers(bot):
 
     @bot.callback_query_handler(func=lambda call: call.data == "admin_add_file")
     def add_file_start(call: CallbackQuery):
+        
+        # 🛠️ الحل هنا: إخطار تليجرام فوراً باستلام الضغطة لإيقاف التحميل والتعليق
+        try:
+            bot.answer_callback_query(call.id)
+        except Exception as e:
+            logging.error(f"Error answering callback: {e}")
 
         file_state[call.from_user.id] = {
             "step": "choose_item"
