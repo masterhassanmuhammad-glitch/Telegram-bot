@@ -117,9 +117,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-# تشغيل تهيئة الجداول تلقائياً عند إقلاع السيرفر
-init_db()
-
 def is_admin(user_id):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -239,7 +236,7 @@ def handle_start(message):
     if not is_admin(user_id) and not has_phone(user_id):
         markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         markup.add(KeyboardButton("📱 مشاركة رقم الهاتف", request_contact=True))
-        bot.send_message(user_id, "📌 يجب مشاركة رقم الهاتف أولاً لتفعيل ميزات البوت الطبي الاستشاري للاستخدام البوت:", reply_markup=markup)
+        bot.send_message(user_id, "📌 يجب مشاركة رقم الهاتف أولاً لتفعيل ميزات البوت الطبي الاستشاري الاستخدام البوت:", reply_markup=markup)
         return
         
     bot.send_message(user_id, "📚 أهلاً بك في البوت الطبي السوداني:", reply_markup=ReplyKeyboardRemove())
@@ -260,53 +257,6 @@ def handle_contact(message):
     bot.send_message(user_id, "✅ تم تسجيل حسابك والتحقق بنجاح!", reply_markup=ReplyKeyboardRemove())
     bot.send_message(user_id, get_main_menu_text(), reply_markup=build_contextual_keyboard(0, user_id))
 
-
-# ========================================================
-# ➕ نظام إضافة آدمن جديد (خاص بالمالك مع دعم الإلغاء)
-# ========================================================
-@bot.message_handler(commands=['addadmin'])
-def add_admin_command(message):
-    chat_id = message.chat.id
-    if chat_id != OWNER_ID:
-        bot.send_message(chat_id, "❌ هذا الأمر مخصص للمالك الأساسي للمشروع فقط.")
-        return
-    
-    msg = bot.send_message(
-        chat_id, 
-        "🎯 من فضلك أرسل الـ ID الرقمي للآدمن الجديد الآن.\n\n"
-        "🔙 للتراجع وإلغاء العملية، أرسل كلمة ( **إلغاء** ) أو اضغط الزر بالأسفل.",
-        parse_mode="Markdown",
-        reply_markup=get_cancel_keyboard()
-    )
-    bot.register_next_step_handler(msg, save_admin_to_db)
-
-def save_admin_to_db(message):
-    chat_id = message.chat.id
-    if chat_id != OWNER_ID: return
-    if check_cancel(message): return
-    
-    user_input = message.text.strip()
-    try:
-        new_id = int(user_input)
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO admins (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING;", (new_id,))
-        conn.commit()
-        conn.close()
-        bot.send_message(OWNER_ID, f"✅ تم إضافة الآدمن الجديد بنجاح وحفظه سحابياً! معرفه الرقمي: `{new_id}`", parse_mode="Markdown", reply_markup=ReplyKeyboardRemove())
-        bot.send_message(OWNER_ID, get_main_menu_text(), reply_markup=build_contextual_keyboard(0, OWNER_ID))
-    except ValueError:
-        bot.send_message(
-            OWNER_ID, 
-            "❌ خطأ! الـ ID المرسل غير صحيح (يجب أن يتكون من أرقام فقط).\n"
-            "تم إغلاق الطلب، يمكنك البدء مجدداً باستخدام الأمر /addadmin",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        bot.send_message(OWNER_ID, get_main_menu_text(), reply_markup=build_contextual_keyboard(0, OWNER_ID))
-    except Exception as e:
-        bot.send_message(OWNER_ID, f"❌ حدث خطأ غير متوقع أثناء الحفظ: {e}")
-
-
 # ========================================================
 # 🎮 معالجة ضغطات الأزرار (Callbacks) وتنفيذ المهام كاملة
 # ========================================================
@@ -319,39 +269,20 @@ def handle_all_callbacks(call):
     if data == "void_click":
         return
         
-    # 1️⃣ التنقل والتصفح عبر الأقسام (معدل لدعم المرفقات والملفات والصور)
+    # 1️⃣ التنقل والتصفح عبر الأقسام
     if data.startswith("navigate_"):
         pid = int(data.split("_")[1])
         if pid == 0:
             msg_text = get_main_menu_text()
-            bot.send_message(chat_id, msg_text, reply_markup=build_contextual_keyboard(pid, call.from_user.id))
         else:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT description, type FROM menu_items WHERE id = %s", (pid,))
+            cursor.execute("SELECT description FROM menu_items WHERE id = %s", (pid,))
             item_row = cursor.fetchone()
-            msg_text = item_row[0] if (item_row and item_row[0]) else ""
-            item_type = item_row[1] if item_row else "category"
-            
-            # فحص هل هذا القسم يحتوي على ملف أو وسائط مرفقة مخزنة سحابياً؟
-            cursor.execute("SELECT file_id, file_type FROM file_attachments WHERE item_id = %s", (pid,))
-            file_row = cursor.fetchone()
+            msg_text = item_row[0] if (item_row and item_row[0]) else "لا يوجد تفاصيل حالياً في هذا القسم."
             conn.close()
-            
-            if file_row:
-                file_id, file_type = file_row[0], file_row[1]
-                if file_type == 'photo':
-                    bot.send_photo(chat_id, file_id, caption=msg_text[:1024], reply_markup=build_contextual_keyboard(pid, call.from_user.id))
-                elif file_type == 'video':
-                    bot.send_video(chat_id, file_id, caption=msg_text[:1024], reply_markup=build_contextual_keyboard(pid, call.from_user.id))
-                elif file_type == 'document':
-                    bot.send_document(chat_id, file_id, caption=msg_text[:1024], reply_markup=build_contextual_keyboard(pid, call.from_user.id))
-            else:
-                if not msg_text and item_type == 'category':
-                    msg_text = "اختر القسم المناسب من الأسفل:"
-                elif not msg_text:
-                    msg_text = "لا يوجد تفاصيل حالياً في هذا القسم."
-                bot.send_message(chat_id, msg_text, reply_markup=build_contextual_keyboard(pid, call.from_user.id))
+
+        bot.send_message(chat_id, msg_text, reply_markup=build_contextual_keyboard(pid, call.from_user.id))
         return
 
     # 2️⃣ إضافة زر جديد للوحة التحكم
@@ -431,25 +362,17 @@ def handle_all_callbacks(call):
     # 7️⃣ استقبال استفسارات ومراسلات المستخدمين للإدارة
     if data == "user_msg_admin":
         admin_states[chat_id] = {'action': 'user_msg'}
-        msg = bot.send_message(chat_id, "📩 أرسل الآن استشارتك الطبية أو رسالتك (نص، صورة، ملف، فيديو) وسيتم عرضها على الإدارة الطبية فوراً:", reply_markup=get_cancel_keyboard())
+        msg = bot.send_message(chat_id, "📩 أرسل الآن استشارتك الطبية أو رسالتك وسيتم عرضها على الإدارة الطبية فوراً:", reply_markup=get_cancel_keyboard())
         bot.register_next_step_handler(msg, process_user_msg)
         return
 
-    # 8️⃣ الرد السريع من قبل الآدمن على العميل
-    if data.startswith("reply_"):
-        target_id = int(data.split("_")[1])
+    # [مضاف] التعامل مع ضغطة زر الرد الخاصة بالآدمن
+    if data.startswith("reply_user_"):
+        target_user_id = int(data.split("_")[2])
         if not is_admin(chat_id): return
-        msg = bot.send_message(chat_id, "✍️ اكتب أو أرسل الآن الرد (نص، صورة، ملف) الذي تريد توجيهه للمشترك مباشرة:", reply_markup=get_cancel_keyboard())
-        bot.register_next_step_handler(msg, send_response_to_user, target_id)
-        return
-
-    # 9️⃣ حذف رسالة المراسلة الواردة للآدمن لتنظيف الشاشة
-    if data == "delete_msg":
-        if not is_admin(chat_id): return
-        try:
-            bot.delete_message(chat_id, call.message.message_id)
-        except Exception:
-            pass
+        admin_states[chat_id] = {'action': 'reply_to_user', 'target_id': target_user_id}
+        msg = bot.send_message(chat_id, f"✍️ أرسل ردك الطبي الآن ليتم توجيهه فوراً للمشترك صاحب المعرف ({target_user_id}):", reply_markup=get_cancel_keyboard())
+        bot.register_next_step_handler(msg, process_admin_reply)
         return
 
 # =========================
@@ -485,4 +408,176 @@ def process_add_type(message):
         return
         
     admin_states[chat_id]['type'] = item_type
-    msg = bot.send_message(chat_id, "📝 أرسل الآن الشرح أو الملف التفصيلي (نص، صورة، فيديو، ملف باوربوينت/PDF) ليتم ربطه بالز
+    msg = bot.send_message(chat_id, "📝 أرسل الآن الشرح أو النص التفصيلي الذي سيظهر للمستخدم عند نقر هذا الزر:", reply_markup=get_cancel_keyboard())
+    bot.register_next_step_handler(msg, process_add_content)
+
+def process_add_content(message):
+    if check_cancel(message): return
+    chat_id = message.chat.id
+    description = message.text
+    if not description:
+        msg = bot.send_message(chat_id, "⚠️ يرجى إرسال نص الشرح كاملاً:")
+        bot.register_next_step_handler(msg, process_add_content)
+        return
+        
+    state = admin_states[chat_id]
+    parent_id = state['parent_id']
+    title = state['title']
+    item_type = state['type']
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO menu_items (title, type, parent_id, description) VALUES (%s, %s, %s, %s)",
+        (title, item_type, parent_id, description)
+    )
+    conn.commit()
+    conn.close()
+    
+    admin_states.pop(chat_id, None)
+    bot.send_message(chat_id, "✅ تم إنشاء الزر بنجاح وحفظه سحابياً للعمل فوراً!", reply_markup=ReplyKeyboardRemove())
+    bot.send_message(chat_id, get_main_menu_text() if parent_id == 0 else "تم تحديث القائمة الحالي:", reply_markup=build_contextual_keyboard(parent_id, chat_id))
+
+def process_edit_main_text(message):
+    if check_cancel(message): return
+    chat_id = message.chat.id
+    new_text = message.text
+    if not new_text:
+        msg = bot.send_message(chat_id, "⚠️ يرجى إرسال نص صالح للتعديل:")
+        bot.register_next_step_handler(msg, process_edit_main_text)
+        return
+        
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO bot_settings (key, value) VALUES ('main_menu_text', %s) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", (new_text,))
+    conn.commit()
+    conn.close()
+    
+    admin_states.pop(chat_id, None)
+    bot.send_message(chat_id, "✅ تم تعديل وحفظ نص الواجهة الترحيبية بنجاح!", reply_markup=ReplyKeyboardRemove())
+    bot.send_message(chat_id, new_text, reply_markup=build_contextual_keyboard(0, chat_id))
+
+def process_broadcast(message):
+    if check_cancel(message): return
+    chat_id = message.chat.id
+    b_text = message.text
+    if not b_text:
+        msg = bot.send_message(chat_id, "⚠️ يرجى إرسال رسالة نصية لبثها:")
+        bot.register_next_step_handler(msg, process_broadcast)
+        return
+        
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM users")
+    users = cursor.fetchall()
+    conn.close()
+    
+    bot.send_message(chat_id, f"⏳ جاري بث وإرسال الرسالة إلى {len(users)} مشترك...", reply_markup=ReplyKeyboardRemove())
+    success = 0
+    for u in users:
+        try:
+            bot.send_message(u[0], b_text)
+            success += 1
+        except Exception:
+            pass
+            
+    admin_states.pop(chat_id, None)
+    bot.send_message(chat_id, f"✅ اكتمل البث! تم توصيل الإذاعة بنجاح لـ {success} مستخدم.")
+    bot.send_message(chat_id, get_main_menu_text(), reply_markup=build_contextual_keyboard(0, chat_id))
+
+# [مُعدّل ومُكتمل بالكامل] يقوم بحفظ الاستشارة، وسحب هاتف المشترك، وتوجيهها للأدمن فوراً مع زر تفاعلي
+def process_user_msg(message):
+    if check_cancel(message): return
+    chat_id = message.chat.id
+    u_text = message.text
+    if not u_text:
+        msg = bot.send_message(chat_id, "⚠️ يرجى كتابة استشارتك نصياً:")
+        bot.register_next_step_handler(msg, process_user_msg)
+        return
+        
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+     # 1. حفظ الاستشارة في قاعدة البيانات
+    cursor.execute("INSERT INTO messages (user_id, username, message_text) VALUES (%s, %s, %s)",
+                   (chat_id, message.from_user.username or f"user_{chat_id}", u_text))
+    
+    # 2. جلب رقم هاتف المرسل المسجل لدينا
+    cursor.execute("SELECT phone FROM users WHERE user_id = %s", (chat_id,))
+    phone_row = cursor.fetchone()
+    user_phone = phone_row[0] if phone_row else "غير مسجل"
+    
+    conn.commit()
+    conn.close()
+    
+    # 3. صياغة كرت بلاغ الاستشارة للأدمن
+    admin_report = (
+        f"📩 **استشارة طبية جديدة واردة:**\n\n"
+        f"👤 **المشترك:** {message.from_user.first_name or 'بدون اسم'}\n"
+        f"🆔 **المعرف (ID):** `{chat_id}`\n"
+        f"📞 **رقم الهاتف:** `{user_phone}`\n\n"
+        f"💬 **نص الاستشارة:**\n{u_text}"
+    )
+    
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("✍️ الرد على المشترك", callback_data=f"reply_user_{chat_id}"))
+    
+    # 4. توجيه البلاغ للمالك الأساسي للبوت
+    try:
+        bot.send_message(OWNER_ID, admin_report, parse_mode="Markdown", reply_markup=markup)
+    except Exception as e:
+        logging.error(f"Failed to forward message to owner: {e}")
+    
+    admin_states.pop(chat_id, None)
+    bot.send_message(chat_id, "✅ تم إرسال استشارتك للإدارة الطبية بنجاح، ستصلك الإجابة هنا فور المراجعة.", reply_markup=ReplyKeyboardRemove())
+    bot.send_message(chat_id, get_main_menu_text(), reply_markup=build_contextual_keyboard(0, chat_id))
+
+# ========================================================
+# 📬 نظام مراسلة الإدارة والرد على المشتركين
+# ========================================================
+
+# دالة معالجة إرسال رد الأدمن وتوصيله للمشترك مباشرة
+def process_admin_reply(message):
+    if check_cancel(message): return
+    chat_id = message.chat.id
+    state = admin_states.get(chat_id)
+    
+    if not state or state.get('action') != 'reply_to_user': return
+    
+    target_id = state['target_id']
+    reply_text = message.text
+    if not reply_text:
+        msg = bot.send_message(chat_id, "⚠️ يرجى كتابة الرد نصياً:")
+        bot.register_next_step_handler(msg, process_admin_reply)
+        return
+        
+    try:
+        formatted_reply = f"💬 **رد رسمي من الإدارة الطبية السودانية:**\n\n{reply_text}"
+        bot.send_message(target_id, formatted_reply, parse_mode="Markdown")
+        bot.send_message(chat_id, "✅ تم إرسال الرد الطبي إلى حساب المشترك بنجاح!", reply_markup=ReplyKeyboardRemove())
+    except Exception as e:
+        bot.send_message(chat_id, f"❌ فشل إرسال الرد للمشترك (قد يكون قام بحظر البوت). السبب: {e}", reply_markup=ReplyKeyboardRemove())
+        
+    admin_states.pop(chat_id, None)
+    bot.send_message(chat_id, get_main_menu_text(), reply_markup=build_contextual_keyboard(0, chat_id))
+
+
+# ========================================================
+# التشغيل والربط التلقائي للبوت وقاعدة البيانات
+# ========================================================
+
+# تشغيل وتهيئة الجداول تلقائياً
+init_db()
+
+# تهيئة وضبط الـ Webhook تلقائياً على منصة Render
+RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL')
+if RENDER_EXTERNAL_URL:
+    try:
+        bot.remove_webhook()
+        bot.set_webhook(url=f"{RENDER_EXTERNAL_URL}/{API_TOKEN}")
+        logging.info(f"✅ Webhook successfully connected to: {RENDER_EXTERNAL_URL}/{API_TOKEN}")
+    except Exception as e:
+        logging.error(f"❌ Webhook link failed: {e}")
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get('PORT', 5000)))
