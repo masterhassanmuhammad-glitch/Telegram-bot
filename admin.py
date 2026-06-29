@@ -195,3 +195,41 @@ def register_admin_handlers(bot):
             call.message.chat.id,
             f"👥 عدد المستخدمين: {count['count'] if count else 0}"
         )
+
+# --------------------------------------
+    # جميع رسائل الأدمن
+    # --------------------------------------
+    @bot.message_handler(func=lambda m: get_state(m.from_user.id) is not None)
+    def admin_messages(message: Message):
+
+        state = get_state(message.from_user.id)
+
+        if not state:
+            return
+
+        current = state["state"]
+
+        # ==============================
+        # إضافة قسم جديد
+        # ==============================
+        if current == AdminState.ADD_ITEM:
+
+            title = message.text.strip()
+
+            if not title:
+                bot.reply_to(message, "❌ اسم القسم لا يمكن أن يكون فارغاً.")
+                return
+
+            execute("""
+                INSERT INTO menu_items(title, type, parent_id, sort_order)
+                VALUES(%s, 'menu', 0, 0)
+            """, (title,))
+
+            clear_state(message.from_user.id)
+
+            bot.send_message(
+                message.chat.id,
+                f"✅ تم إنشاء القسم:\n\n📂 {title}"
+            )
+
+            return
