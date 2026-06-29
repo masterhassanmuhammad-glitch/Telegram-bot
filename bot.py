@@ -50,7 +50,7 @@ register_admin_handlers(bot)
 # ============================================
 # HEALTH CHECK ROUTE (حل مشكلة الـ 404 على Render)
 # ============================================
-@app.route("/", methods=["GET"])
+@app.route("/", methods=["HEAD"])
 def index():
     return "MedicalBot is running and healthy! 🏥", 200
 
