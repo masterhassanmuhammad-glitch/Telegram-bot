@@ -9,6 +9,42 @@ from keyboards import (
     file_keyboard
 )
 
+def register_handlers(bot):
+
+    # ============================================
+    # 🚨 رادار كشف الأزرار (ضعه في البداية تماماً ليمسك الضغطة أولاً)
+    # ============================================
+    @bot.callback_query_handler(func=lambda call: True)
+    def radar_test(call: CallbackQuery):
+        # طباعة إجبارية تظهر في لوج Render فوراً
+        print(f"🚨 [الرادار] تم ضغط زر! البيانات المخفية داخله هي: {call.data}", flush=True)
+        
+        # إظهار نافذة منبثقة على هاتف المستخدم تخبره بالقيمة
+        bot.answer_callback_query(
+            call.id, 
+            text=f"📊 رادار الأزرار:\nالبيانات المستلمة: {call.data}", 
+            show_alert=True
+        )
+
+
+    # ============================================
+    # START MENU
+    # ============================================
+    @bot.message_handler(commands=['start'])
+    def start(message: Message):
+        # بقية كود الـ start الحالي دون تغيير...
+        
+from telebot.types import Message, CallbackQuery
+import logging
+
+from database import execute
+from keyboards import (
+    main_menu_keyboard,
+    back_keyboard,
+    item_actions_keyboard,
+    file_keyboard
+)
+
 # ============================================
 # START MENU
 # ============================================
