@@ -24,7 +24,8 @@ logging.basicConfig(
 # ============================================
 # BOT INIT
 # ============================================
-bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML")
+# تفعلة خيار threaded=False لضمان معالجة الرسائل تزامناً مع طلب Flask وبدون اختفاء صامت
+bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML", threaded=False)
 
 # ============================================
 # FLASK APP (FOR WEBHOOK)
@@ -50,7 +51,7 @@ register_admin_handlers(bot)
 # ============================================
 # HEALTH CHECK ROUTE (حل مشكلة الـ 404 على Render)
 # ============================================
-@app.route("/", methods=["HEAD"])
+@app.route("/", methods=["GET", "HEAD"])
 def index():
     return "MedicalBot is running and healthy! 🏥", 200
 
@@ -79,16 +80,15 @@ def set_webhook():
     else:
         logging.warning("RENDER_EXTERNAL_URL not set. Using polling.")
 
+# استدعاء الدالة هنا مباشرة لتعمل فوراً تحت بيئة تشغيل Gunicorn
+set_webhook()
+
 # ============================================
 # START BOT
 # ============================================
 if __name__ == "__main__":
-    set_webhook()
-
-    if RENDER_EXTERNAL_URL:
-        logging.info("Starting Flask server (Webhook mode)")
-        app.run(host="0.0.0.0", port=PORT)
-    else:
+    # هذا البلوك سيعمل فقط إذا قمت بتشغيل الملف محلياً على جهازك كمود Polling
+    if not RENDER_EXTERNAL_URL:
         logging.info("Starting bot (Polling mode)")
         bot.infinity_polling()
         
