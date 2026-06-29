@@ -1,4 +1,5 @@
 from telebot.types import Message, CallbackQuery
+import logging
 
 from database import execute
 from keyboards import (
@@ -47,6 +48,12 @@ def register_handlers(bot):
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
     def open_item(call: CallbackQuery):
+        
+        # 🛠️ حل التعليق: إشعار تليجرام فوراً بإلغاء جاري التحميل
+        try:
+            bot.answer_callback_query(call.id)
+        except Exception as e:
+            logging.error(f"Error answering callback: {e}")
 
         item_id = int(call.data.split("_")[1])
 
@@ -56,7 +63,6 @@ def register_handlers(bot):
         """, (item_id,), fetchone=True)
 
         if not item:
-            bot.answer_callback_query(call.id, "غير موجود")
             return
 
         children = execute("""
@@ -87,6 +93,12 @@ def register_handlers(bot):
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("back_"))
     def go_back(call: CallbackQuery):
+        
+        # 🛠️ حل التعليق: إلغاء تحميل زر العودة فوراً
+        try:
+            bot.answer_callback_query(call.id)
+        except Exception as e:
+            logging.error(f"Error answering callback: {e}")
 
         parent_id = int(call.data.split("_")[1])
 
@@ -132,6 +144,12 @@ def register_handlers(bot):
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("files_"))
     def show_files(call: CallbackQuery):
+        
+        # 🛠️ حل التعليق: إيقاف التحميل فوراً قبل البدء في إرسال المستندات (لتجنب تعليق الزر أثناء الرفع)
+        try:
+            bot.answer_callback_query(call.id)
+        except Exception as e:
+            logging.error(f"Error answering callback: {e}")
 
         item_id = int(call.data.split("_")[1])
 
@@ -141,7 +159,7 @@ def register_handlers(bot):
         """, (item_id,), fetch=True)
 
         if not files:
-            bot.answer_callback_query(call.id, "لا توجد ملفات")
+            bot.send_message(call.message.chat.id, "❌ لا توجد ملفات في هذا القسم حالياً.")
             return
 
         for f in files:
@@ -159,6 +177,12 @@ def register_handlers(bot):
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("showfile_"))
     def show_file(call: CallbackQuery):
+        
+        # 🛠️ حل التعليق: إيقاف تحميل زر عرض الملف الفردي
+        try:
+            bot.answer_callback_query(call.id)
+        except Exception as e:
+            logging.error(f"Error answering callback: {e}")
 
         file_id = int(call.data.split("_")[1])
 
@@ -168,7 +192,6 @@ def register_handlers(bot):
         """, (file_id,), fetchone=True)
 
         if not file:
-            bot.answer_callback_query(call.id, "غير موجود")
             return
 
         bot.send_document(
@@ -184,4 +207,8 @@ def register_handlers(bot):
 
     @bot.callback_query_handler(func=lambda call: call.data == "cancel_action")
     def cancel(call: CallbackQuery):
-        bot.answer_callback_query(call.id, "تم الإلغاء")
+        try:
+            bot.answer_callback_query(call.id, "تم الإلغاء")
+        except Exception as e:
+            logging.error(f"Error answering callback: {e}")
+            
