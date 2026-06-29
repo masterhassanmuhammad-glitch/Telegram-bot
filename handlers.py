@@ -41,51 +41,64 @@ def register_handlers(bot):
             reply_markup=main_menu_keyboard(items or [])
         )
 
-
     # ============================================
-    # OPEN MENU ITEM
+    # OPEN MENU ITEM (نسخة التتبع العميق)
     # ============================================
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
     def open_item(call: CallbackQuery):
+        logging.info(f"🔮 [تتبع] 1. تم استقبال ضغطة الزر بنجاح البيانات: {call.data}")
         
-        # 🛠️ حل التعليق: إشعار تليجرام فوراً بإلغاء جاري التحميل
         try:
             bot.answer_callback_query(call.id)
+            logging.info("✅ [تتبع] 2. تم إرسال أمر إلغاء تعليق الساعة إلى تليجرام")
         except Exception as e:
-            logging.error(f"Error answering callback: {e}")
+            logging.error(f"❌ [تتبع] خطأ في إلغاء التعليق: {e}")
 
-        item_id = int(call.data.split("_")[1])
-
-        item = execute("""
-        SELECT id, title, description FROM menu_items
-        WHERE id=%s
-        """, (item_id,), fetchone=True)
-
-        if not item:
+        logging.info("⏳ [تتبع] 3. جاري محاولة الاتصال بقاعدة البيانات لجلب القسم...")
+        try:
+            item_id = int(call.data.split("_")[1])
+            item = execute("""
+            SELECT id, title, description FROM menu_items
+            WHERE id=%s
+            """, (item_id,), fetchone=True)
+            logging.info(f"✅ [تتبع] 4. اكتمل استعلام قاعدة البيانات بنجاح. النتيجة: {item}")
+        except Exception as e:
+            logging.error(f"❌ [تتبع] انهيار في قاعدة البيانات عند خطوة 4: {e}")
             return
 
-        children = execute("""
-        SELECT id, title FROM menu_items
-        WHERE parent_id=%s
-        ORDER BY sort_order
-        """, (item_id,), fetch=True)
+        if not item:
+            logging.warning("⚠️ [تتبع] تنبيه: هذا القسم غير موجود في الجداول")
+            return
 
-        text = f"📂 {item['title']}\n\n{item['description'] or ''}"
+        logging.info("⏳ [تتبع] 5. جاري جلب العناصر الفرعية للقسم...")
+        try:
+            children = execute("""
+            SELECT id, title FROM menu_items
+            WHERE parent_id=%s
+            ORDER BY sort_order
+            """, (item_id,), fetch=True)
+            logging.info(f"✅ [تتبع] 6. تم جلب العناصر الفرعية بنجاح. العدد: {len(children or [])}")
+        except Exception as e:
+            logging.error(f"❌ [تتبع] خطأ في جلب العناصر الفرعية: {e}")
+            return
 
-        markup = main_menu_keyboard(children or [])
+        logging.info("⏳ [تتبع] 7. جاري محاولة تعديل رسالة تليجرام وإرسال الأزرار الجديدة...")
+        try:
+            text = f"📂 {item['title']}\n\n{item['description'] or ''}"
+            markup = main_menu_keyboard(children or [])
+            markup.add(back_keyboard(0).keyboard[0])
 
-        markup.add(
-            back_keyboard(0).keyboard[0]
-        )
-
-        bot.edit_message_text(
-            text,
-            call.message.chat.id,
-            call.message.message_id,
-            reply_markup=markup
-        )
-
+            bot.edit_message_text(
+                text,
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=markup
+            )
+            logging.info("🎉 [تتبع] 8. مبروك! تم تحديث واجهة البوت بالكامل بدون مشاكل.")
+        except Exception as e:
+            logging.error(f"❌ [تتبع] خطأ أثناء تعديل الرسالة في تليجرام: {e}")
+            
 
     # ============================================
     # BACK NAVIGATION
