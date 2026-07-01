@@ -25,7 +25,7 @@ logging.basicConfig(
 # ============================================
 # BOT INIT
 # ============================================
-# تفعلة خيار threaded=False لضمان معالجة الرسائل تزامناً مع طلب Flask وبدون اختفاء صامت
+# تفعيل خيار threaded=False لضمان معالجة الرسائل تزامناً مع طلب Flask وبدون اختفاء صامت
 bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML", threaded=False)
 
 # ============================================
@@ -50,31 +50,30 @@ register_user_handlers(bot)
 register_admin_handlers(bot)
 
 # ============================================
-# HEALTH CHECK ROUTE (حل مشكلة الـ 404 على Render)
+# ROUTES (HEALTH CHECK & WEBHOOK)
 # ============================================
-@app.route("/", methods=["GET", "HEAD"])
+# دمج المسارات على الرابط الرئيسي '/' ليتعامل مع الـ GET والـ POST في نفس الوقت
+@app.route("/", methods=["GET", "HEAD", "POST"])
 def index():
-    return "MedicalBot is running and healthy! 🏥", 200
-
-# ============================================
-# WEBHOOK ROUTE
-# ============================================
-@app.route(f"/{API_TOKEN}", methods=["POST"])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_str = request.get_data().decode("utf-8")
-        update = telebot.types.Update.de_json(json_str)
-        bot.process_new_updates([update])
-        return "OK", 200
-    else:
-        return "Invalid request", 400
+    if request.method in ["GET", "HEAD"]:
+        return "MedicalBot is running and healthy! 🏥", 200
+        
+    elif request.method == "POST":
+        if request.headers.get('content-type') == 'application/json':
+            json_str = request.get_data().decode("utf-8")
+            update = telebot.types.Update.de_json(json_str)
+            bot.process_new_updates([update])
+            return "OK", 200
+        else:
+            return "Invalid request", 400
 
 # ============================================
 # SET WEBHOOK
 # ============================================
 def set_webhook():
     if RENDER_EXTERNAL_URL:
-        url = f"{RENDER_EXTERNAL_URL.rstrip('/')}/{API_TOKEN}"
+        # جعل الويب هوك يشير إلى الرابط الرئيسي مباشرة دون الحاجة للتوكن في الآخِر ليتطابق مع الـ Route
+        url = f"{RENDER_EXTERNAL_URL.rstrip('/')}/"
         bot.remove_webhook()
         bot.set_webhook(url=url)
         logging.info(f"Webhook set to: {url}")
