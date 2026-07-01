@@ -12,25 +12,6 @@ from keyboards import (
 def register_handlers(bot):
 
     # ============================================
-    # 🚨 رادار كشف الأزرار (يصطاد أي ضغطة ويطبعها إجبارياً)
-    # ============================================
-    @bot.callback_query_handler(func=lambda call: True)
-    def radar_test(call: CallbackQuery):
-        # طباعة إجبارية تظهر في لوج Render فوراً مهما كانت الإعدادات
-        print(f"🚨 [الرادار] تم ضغط زر! البيانات المخفية داخله هي: {call.data}", flush=True)
-        
-        # إظهار نافذة منبثقة على هاتف المستخدم تخبره بالقيمة
-        try:
-            bot.answer_callback_query(
-                call.id, 
-                text=f"📊 رادار الأزرار:\nالبيانات المستلمة: {call.data}", 
-                show_alert=True
-            )
-        except Exception as e:
-            print(f"❌ خطأ أثناء الرد بالرادار: {e}", flush=True)
-
-
-    # ============================================
     # START MENU
     # ============================================
     @bot.message_handler(commands=['start'])
