@@ -1,6 +1,7 @@
 print("BOT STARTING...")
 import telebot
 import logging
+import threading  # 🌟 إضافة مكتبة التشغيل المتوازي لمنع التعليق
 from flask import Flask, request
 
 from config import API_TOKEN, PORT, RENDER_EXTERNAL_URL
@@ -25,7 +26,6 @@ logging.basicConfig(
 # ============================================
 # BOT INIT
 # ============================================
-# تفعيل خيار threaded=False لضمان معالجة الرسائل تزامناً مع طلب Flask وبدون اختفاء صامت
 bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML", threaded=False)
 
 # ============================================
@@ -40,7 +40,7 @@ init_db()
 init_settings(owner_id=8203001172)
 
 # ============================================
-# REGISTER ALL HANDLERS (ربط كافة الملفات بالبوت)
+# REGISTER ALL HANDLERS
 # ============================================
 register_handlers(bot)
 register_consultation_handlers(bot)
@@ -52,7 +52,6 @@ register_admin_handlers(bot)
 # ============================================
 # ROUTES (HEALTH CHECK & WEBHOOK)
 # ============================================
-# دمج المسارات على الرابط الرئيسي '/' ليتعامل مع الـ GET والـ POST في نفس الوقت
 @app.route("/", methods=["GET", "HEAD", "POST"])
 def index():
     if request.method in ["GET", "HEAD"]:
@@ -62,7 +61,10 @@ def index():
         if request.headers.get('content-type') == 'application/json':
             json_str = request.get_data().decode("utf-8")
             update = telebot.types.Update.de_json(json_str)
-            bot.process_new_updates([update])
+            
+            # 🌟 تشغيل المعالجة في خيط منفصل فوراً ليرد الفلاسك على تليجرام دون أي تأخير
+            threading.Thread(target=bot.process_new_updates, args=([update],)).start()
+            
             return "OK", 200
         else:
             return "Invalid request", 400
@@ -72,7 +74,6 @@ def index():
 # ============================================
 def set_webhook():
     if RENDER_EXTERNAL_URL:
-        # جعل الويب هوك يشير إلى الرابط الرئيسي مباشرة دون الحاجة للتوكن في الآخِر ليتطابق مع الـ Route
         url = f"{RENDER_EXTERNAL_URL.rstrip('/')}/"
         bot.remove_webhook()
         bot.set_webhook(url=url)
@@ -80,15 +81,16 @@ def set_webhook():
     else:
         logging.warning("RENDER_EXTERNAL_URL not set. Using polling.")
 
-# استدعاء الدالة هنا مباشرة لتعمل فوراً تحت بيئة تشغيل Gunicorn
 set_webhook()
 
 # ============================================
 # START BOT
 # ============================================
 if __name__ == "__main__":
-    # هذا البلوك سيعمل فقط إذا قمت بتشغيل الملف محلياً على جهازك كمود Polling
     if not RENDER_EXTERNAL_URL:
         logging.info("Starting bot (Polling mode)")
         bot.infinity_polling()
+    else:
+        logging.info(f"Starting Flask server on port {PORT} (Webhook mode)")
+        app.run(host="0.0.0.0", port=PORT)
         
