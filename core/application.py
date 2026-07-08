@@ -5,6 +5,9 @@ from config import BOT_TOKEN
 from services.bootstrap_service import initialize
 
 initialize()
+from handlers.admin import register as register_admin
+
+register_admin(application)
 from handlers.start import register as register_start
 from handlers.callback import register as register_callback
 
