@@ -88,13 +88,31 @@ async def receive_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         data = state["data"]
 
-        menus_service.create(
-            title=data["title"],
-            description=data["description"],
-            icon=update.message.text,
-            parent_id=0,
-            sort_order=0,
-            visible=True
+        data["icon"] = update.message.text
+
+set_state(
+    user.id,
+    "MENU_PARENT",
+    data
+)
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+keyboard = [
+    [
+        InlineKeyboardButton(
+            "➡️ اختيار القسم الأب",
+            callback_data="admin:parent"
+        )
+    ]
+]
+
+await update.message.reply_text(
+    "اضغط لاختيار القسم الأب.",
+    reply_markup=InlineKeyboardMarkup(keyboard)
+)
+
+return
         )
 
         clear_state(user.id)
