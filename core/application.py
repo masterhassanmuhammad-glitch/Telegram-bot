@@ -2,6 +2,9 @@ from telegram.ext import Application
 
 from config import BOT_TOKEN
 
+from services.bootstrap_service import initialize
+
+initialize()
 from handlers.start import register as register_start
 from handlers.callback import register as register_callback
 
