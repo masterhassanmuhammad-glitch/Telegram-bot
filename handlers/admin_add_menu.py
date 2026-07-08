@@ -95,6 +95,26 @@ set_state(
     "MENU_PARENT",
     data
 )
+if action == "MENU_SORT":
+
+    data = state["data"]
+
+    menus_service.create(
+        title=data["title"],
+        description=data["description"],
+        icon=data["icon"],
+        parent_id=data["parent_id"],
+        sort_order=int(update.message.text),
+        visible=True
+    )
+
+    clear_state(user.id)
+
+    await update.message.reply_text(
+        "✅ تم إنشاء القسم بنجاح."
+    )
+
+    return
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
