@@ -1,7 +1,9 @@
 from telegram.ext import Application
 
 from config import BOT_TOKEN
+from handlers.admin_menus import register as register_admin_menus
 
+register_admin_menus(application)
 from services.bootstrap_service import initialize
 
 initialize()
