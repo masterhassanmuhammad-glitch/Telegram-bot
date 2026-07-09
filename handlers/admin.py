@@ -34,47 +34,13 @@ async def start_add_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     context.user_data["upload_to_btn"] = btn_id
+    # تنظيف حالة الرد على الطلاب لضمان عدم التداخل
+    context.user_data.pop("reply_to_student", None)
+    
     await query.edit_message_text(
         "📥 **أرسل الآن أي شيء:** (مستند PDF، صورة، محاضرة، أو نص عادي) "
         "ليتم حفظه داخل هذا الزر فوراً:"
     )
-
-
-async def process_file_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """معالجة الملف/النص المرسل من الآدمن لحفظه في قاعدة البيانات."""
-    btn_id = context.user_data.get("upload_to_btn")
-    if not btn_id:
-        return  # ليس في وضع الرفع
-
-    msg = update.message
-    content_type = None
-    file_id = None
-    caption = msg.caption or msg.text or ""
-
-    if msg.document:
-        content_type = "document"
-        file_id = msg.document.file_id
-    elif msg.photo:
-        content_type = "photo"
-        file_id = msg.photo[-1].file_id  # أعلى جودة
-    elif msg.text:
-        content_type = "text"
-        caption = msg.text
-
-    if content_type:
-        async with pool.connection() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute(
-                    "INSERT INTO button_contents (button_id, content_type, file_id, text_caption) "
-                    "VALUES (%s, %s, %s, %s)",
-                    (btn_id, content_type, file_id, caption)
-                )
-                await conn.commit()
-
-        context.user_data.pop("upload_to_btn", None)
-        await msg.reply_text(
-            "✅ تم حفظ الملف والمحتوى الأكاديمي بنجاح داخل قاعدة بيانات Neon المربوطة بالزر!"
-        )
 
 
 # ---------- 2. عرض رسائل الطلاب والرد عليها ----------
@@ -129,40 +95,79 @@ async def handle_msg_actions(update: Update, context: ContextTypes.DEFAULT_TYPE)
     elif action == "adm_reply":
         target_student_id = int(parts[2])
         context.user_data["reply_to_student"] = (target_student_id, msg_db_id)
+        # تنظيف حالة الرفع لضمان عدم التداخل
+        context.user_data.pop("upload_to_btn", None)
         await query.message.reply_text("✍️ أرسل ردك الآن ليتم توجيهه للطالب عبر البوت:")
 
 
-async def send_reply_to_student(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إرسال رد الآدمن إلى الطالب وتحديث حالة الرسالة."""
-    reply_info = context.user_data.get("reply_to_student")
-    if not reply_info:
+# ---------- 3. المعالج الموحد لمدخلات الآدمن (الحل الحاسم للتداخل) ----------
+async def handle_admin_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """المعالج الذكي الموحد لكل الرسائل والوسائط الصادرة من الآدمن."""
+    msg = update.message
+
+    # الحالة الأولى: الآدمن في وضع رفع محتوى لزر (ملف، صورة، نص)
+    if "upload_to_btn" in context.user_data:
+        btn_id = context.user_data["upload_to_btn"]
+        content_type = None
+        file_id = None
+        caption = msg.caption or msg.text or ""
+
+        if msg.document:
+            content_type = "document"
+            file_id = msg.document.file_id
+        elif msg.photo:
+            content_type = "photo"
+            file_id = msg.photo[-1].file_id
+        elif msg.text:
+            content_type = "text"
+            caption = msg.text
+
+        if content_type:
+            async with pool.connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "INSERT INTO button_contents (button_id, content_type, file_id, text_caption) "
+                        "VALUES (%s, %s, %s, %s)",
+                        (btn_id, content_type, file_id, caption)
+                    )
+                    await conn.commit()
+
+            context.user_data.pop("upload_to_btn", None)
+            await msg.reply_text("✅ تم حفظ الملف والمحتوى الأكاديمي بنجاح داخل قاعدة بيانات Neon المربوطة بالزر!")
         return
 
-    student_id, msg_db_id = reply_info
-    reply_text = update.message.text
+    # الحالة الثانية: الآدمن في وضع الرد على رسالة طالب
+    elif "reply_to_student" in context.user_data:
+        student_id, msg_db_id = context.user_data["reply_to_student"]
+        reply_text = msg.text
 
-    try:
-        await context.bot.send_message(
-            chat_id=student_id,
-            text=f"💬 **رد رسمي من إدارة الدفعة الطبية:**\n\n{reply_text}",
-            parse_mode="Markdown"
-        )
+        if not reply_text:
+            await msg.reply_text("⚠️ عذراً، يجب أن يكون الرد نصياً فقط.")
+            return
 
-        async with pool.connection() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute(
-                    "UPDATE user_messages SET status = 'replied' WHERE id = %s",
-                    (msg_db_id,)
-                )
-                await conn.commit()
+        try:
+            await context.bot.send_message(
+                chat_id=student_id,
+                text=f"💬 **رد رسمي من إدارة الدفعة الطبية:**\n\n{reply_text}",
+                parse_mode="Markdown"
+            )
 
-        context.user_data.pop("reply_to_student", None)
-        await update.message.reply_text("✅ تم إرسال الرد وتحديث قاعدة البيانات بنجاح.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ فشل إرسال الرد. قد يكون الطالب قد حظر البوت. الخطأ: {e}")
+            async with pool.connection() as conn:
+                async with conn.cursor() as cursor:
+                    await cursor.execute(
+                        "UPDATE user_messages SET status = 'replied' WHERE id = %s",
+                        (msg_db_id,)
+                    )
+                    await conn.commit()
+
+            context.user_data.pop("reply_to_student", None)
+            await msg.reply_text("✅ تم إرسال الرد وتحديث قاعدة البيانات بنجاح.")
+        except Exception as e:
+            await msg.reply_text(f"❌ فشل إرسال الرد. قد يكون الطالب قد حظر البوت. الخطأ: {e}")
+        return
 
 
-# ---------- 3. لوحة التحكم الإدارية الرئيسية (الأزرار، الهيكلية) ----------
+# ---------- 4. لوحة التحكم الإدارية الرئيسية (الأزرار، الهيكلية) ----------
 async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض القائمة الرئيسية للإدارة (يُستدعى بواسطة /admin)."""
     if update.effective_user.id != OWNER_ID:
@@ -180,10 +185,7 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_admin_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    معالج جميع استعلامات الإدارة الخاصة بالأزرار والهيكلية.
-    يشمل: عرض الأقسام، تعديل الأزرار، ترتيبها، إضافة فروع، وتعديل الرسائل.
-    """
+    """معالج جميع استعلامات الإدارة الخاصة بالأزرار والهيكلية."""
     query = update.callback_query
     await query.answer()
     data = query.data
@@ -253,79 +255,39 @@ async def handle_admin_callbacks(update: Update, context: ContextTypes.DEFAULT_T
             reply_markup=reply_markup
         )
 
-    # ----- adm_order: تغيير ترتيب الزر (⬆️ ⬇️) -----
+    # ----- بقية الـ Callbacks الإدارية (تنفيذ وهمي ومبسط كما في كودك) -----
     elif data.startswith("adm_order:"):
         _, direction, btn_id = data.split(":")
-        btn_id = int(btn_id)
-        # (هنا يمكن تنفيذ منطق تغيير sort_order، لكن نتركه كمثال)
-        await query.edit_message_text(
-            f"🔄 تم تغيير ترتيب الزر {btn_id} إلى {'أعلى' if direction == 'up' else 'أسفل'} (وهمي)."
-        )
-
-    # ----- adm_create: إضافة مجلد فرعي أو قسم ميديا -----
+        await query.edit_message_text(f"🔄 تم تغيير ترتيب الزر {btn_id} إلى {'أعلى' if direction == 'up' else 'أسفل'} (وهمي).")
     elif data.startswith("adm_create:"):
         _, sub_type, parent_str = data.split(":")
-        parent = None if parent_str == "root" else int(parent_str)
-        await query.edit_message_text(
-            f"🧩 إضافة {'مجلد فرعي' if sub_type == 'sub' else 'قسم ميديا'} تحت الأب {parent} (وهمي)."
-        )
-
-    # ----- adm_modmsg: تعديل رسالة الزر -----
+        await query.edit_message_text(f"🧩 إضافة {'مجلد فرعي' if sub_type == 'sub' else 'قسم ميديا'} تحت الأب {parent_str} (وهمي).")
     elif data.startswith("adm_modmsg:"):
         btn_id = int(data.split(":")[1])
-        await query.edit_message_text(
-            f"✏️ تعديل الرسالة المرتبطة بالزر {btn_id} (وهمي)."
-        )
-
-    # ----- adm_action: عمليات فرعية (تعديل اسم، نقل، حذف) -----
+        await query.edit_message_text(f"✏️ تعديل الرسالة المرتبطة بالزر {btn_id} (وهمي).")
     elif data.startswith("adm_action:"):
-        # هذه تُستدعى من داخل adm_edit، نتعامل معها بشكل مبسط
         parts = data.split(":")
-        action = parts[1]
-        btn_id = int(parts[2])
-        if action == "name":
-            await query.edit_message_text(f"✏️ تعديل اسم الزر {btn_id} (وهمي).")
-        elif action == "move":
-            await query.edit_message_text(f"🔄 نقل الزر {btn_id} (وهمي).")
-        elif action == "del":
-            await query.edit_message_text(f"🗑️ حذف الزر {btn_id} (وهمي).")
+        action, btn_id = parts[1], int(parts[2])
+        await query.edit_message_text(f"🛠️ تم تنفيذ الإجراء الإداري {action} على الزر {btn_id} (وهمي).")
 
 
 # ---------- تسجيل جميع المعالجات ----------
 def register_admin_handlers(application):
-    """تسجيل جميع معالجات الإدارة في التطبيق."""
-    # أمر /admin
+    """تسجيل جميع معالجات الإدارة في التطبيق بكفاءة وبدون تداخل."""
+    # أمر /admin لوحة التحكم
     application.add_handler(CommandHandler("admin", admin_menu))
 
-    # معالجات رفع المحتوى (ملفات ونصوص)
-    application.add_handler(
-        CallbackQueryHandler(start_add_content, pattern="^adm_action:addcontent:")
-    )
+    # معالجات الكليك (Callback Queries) لرسائل الطلاب والأزرار
+    application.add_handler(CallbackQueryHandler(start_add_content, pattern="^adm_action:addcontent:"))
+    application.add_handler(CallbackQueryHandler(view_incoming_messages, pattern="^adm_view_msgs$"))
+    application.add_handler(CallbackQueryHandler(handle_msg_actions, pattern="^(adm_reply:|adm_delmsg:)"))
+    application.add_handler(CallbackQueryHandler(handle_admin_callbacks, pattern="^(adm_manage:|adm_edit:|adm_order:|adm_create:|adm_modmsg:|adm_action:)"))
+
+    # المعالج الموحد والذكي لاستقبال وسائط ورسائل المشرف (OWNER_ID)
     application.add_handler(
         MessageHandler(
             filters.ALL & ~filters.COMMAND & filters.Chat(OWNER_ID),
-            process_file_upload
+            handle_admin_messages
         )
     )
-
-    # معالجات رسائل الطلاب
-    application.add_handler(
-        CallbackQueryHandler(view_incoming_messages, pattern="^adm_view_msgs$")
-    )
-    application.add_handler(
-        CallbackQueryHandler(handle_msg_actions, pattern="^(adm_reply:|adm_delmsg:)")
-    )
-    application.add_handler(
-        MessageHandler(
-            filters.TEXT & ~filters.COMMAND & filters.Chat(OWNER_ID),
-            send_reply_to_student
-        )
-    )
-
-    # معالجات الإدارة الشاملة (القوائم، التعديل، الترتيب، الإضافة، ...)
-    application.add_handler(
-        CallbackQueryHandler(
-            handle_admin_callbacks,
-            pattern="^(adm_manage:|adm_edit:|adm_order:|adm_create:|adm_modmsg:|adm_action:)"
-        )
-    )
+    
