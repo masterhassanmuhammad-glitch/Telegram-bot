@@ -1,27 +1,11 @@
 import os
+from dotenv import load_dotenv
 
-# ==========================================
-# Telegram
-# ==========================================
+load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-# ==========================================
-# Database
-# ==========================================
-
 DATABASE_URL = os.getenv("DATABASE_URL")
+OWNER_ID = int(os.getenv("OWNER_ID", "123456789"))
 
-# ==========================================
-# Render
-# ==========================================
-
-RENDER_EXTERNAL_URL = os.getenv("RENDER_EXTERNAL_URL")
-
-PORT = int(os.getenv("PORT", 10000))
-
-# ==========================================
-# Debug
-# ==========================================
-
-DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+# رابط المشروع على ريندر لاستقبال الـ Webhook (مثال: https://med-bot.onrender.com)
+WEBHOOK_URL = os.getenv("WEBHOOK_URL") 
