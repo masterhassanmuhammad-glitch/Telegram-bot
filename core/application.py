@@ -9,6 +9,9 @@ from handlers.admin import register as register_admin
 from handlers.admin_menus import register as register_admin_menus
 from handlers.admin_add_menu import register as register_admin_add_menu
 from handlers.admin_parent_menu import register as register_admin_parent_menu
+from handlers.admin_sort_menu import register as register_admin_sort_menu
+
+register_admin_sort_menu(application)
 
 # 1. تشغيل الخدمات الأساسية أولاً (إذا كانت قاعدة البيانات تعتمد عليها)
 initialize()
