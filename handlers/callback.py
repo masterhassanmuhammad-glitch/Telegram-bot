@@ -6,6 +6,7 @@ from services import (
     menus_service,
     contents_service,
     media_service,
+    button_contents_service,  # تم إضافة الاستيراد هنا
 )
 
 from ui.renderer import render_menu
@@ -37,16 +38,17 @@ async def callback(
         await render_menu(update, int(value))
         return
 
-    # إرسال محتوى نصي
+    # إرسال محتوى نصي (التعديل الجديد)
     if action == "CONTENT":
+        contents = button_contents_service.by_button(
+            button["id"]
+        )
 
-        content = contents_service.get(int(value))
-
-        if content:
-            await query.message.reply_text(
-                content["body"]
-            )
-
+        for content in contents:
+            if content["content_type"] == "TEXT":
+                await query.message.reply_text(
+                    content["body"]
+                )
         return
 
     # إرسال ملف
@@ -89,4 +91,5 @@ async def callback(
 def register(application):
     application.add_handler(
         CallbackQueryHandler(callback)
-          )
+    )
+    
