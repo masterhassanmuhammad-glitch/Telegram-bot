@@ -6,15 +6,19 @@ import uvicorn
 
 from config import BOT_TOKEN, WEBHOOK_URL
 from database import init_db, pool
+
+# استيراد دوال التسجيل الموحدة والمصححة
 from handlers.start import register_start_handlers
 from handlers.admin import register_admin_handlers
+from handlers.user import register_user_handlers
 
 # تهيئة تطبيق python-telegram-bot بنظام الـ Async
 ptb_app = Application.builder().token(BOT_TOKEN).updater(None).build()
 
-# تسجيل الـ Handlers المقسمة
+# --- تسجيل الـ Handlers المقسمة والمصححة ---
 register_start_handlers(ptb_app)
-register_admin_handlers(ptb_app)
+register_admin_handlers(ptb_app) # تشمل لوحة التحكم، الرفع، والردود
+register_user_handlers(ptb_app)  # تشمل التنقل في الأقسام ونظام المراسلة
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -53,6 +57,6 @@ async def health_check():
     return {"status": "healthy", "service": "Medical Bot v2 Running with Webhooks"}
 
 if __name__ == "__main__":
-    # تشغيل السيرفر محلياً أو للتجربة (في ريندر يتم التشغيل عبر سطر الأوامر تلقائياً)
+    # تشغيل السيرفر محلياً أو للتجربة
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
-  
+    
