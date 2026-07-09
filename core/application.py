@@ -4,6 +4,9 @@ from config import BOT_TOKEN
 # استيراد الخدمات والدوال الضرورية
 from services.bootstrap_service import initialize
 from handlers.start import register as register_start
+from handlers.admin_buttons import register as register_admin_buttons
+
+register_admin_buttons(application)
 from handlers.callback import register as register_callback
 from handlers.admin import register as register_admin
 from handlers.admin_menus import register as register_admin_menus
