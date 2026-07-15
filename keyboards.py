@@ -1,24 +1,36 @@
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import execute_query
+from config import OWNER_ID
 
-def make_main_menu_markup(is_admin=False):
+def make_main_menu_markup(perms, user_id=None):
     markup = InlineKeyboardMarkup(row_width=2)
     
-    # 1. جلب الأزرار الرئيسية (التي ليس لها أب) من قاعدة البيانات
+    # 1. جلب الأزرار الرئيسية من قاعدة البيانات
     main_buttons = execute_query("SELECT id, name FROM buttons WHERE parent_id IS NULL ORDER BY id ASC;", fetch=True)
-    
     for btn_id, btn_name in main_buttons:
         markup.add(InlineKeyboardButton(text=btn_name, callback_data=f"open_{btn_id}"))
         
-    # 2. إضافة الأزرار الثابتة بناءً على نوع المستخدم (مشرف أم مستخدم عادي)
-    if is_admin:
-        # أزرار المشرف الثابتة داخل القائمة الرئيسية
-        markup.add(InlineKeyboardButton(text="⚙️ الإعدادات الإدارية", callback_data="admin_settings"))
-        markup.add(InlineKeyboardButton(text="📢 إرسال رسالة جماعية", callback_data="admin_broadcast"))
-        markup.row(
-            InlineKeyboardButton(text="📊 عدد المستخدمين", callback_data="admin_count_users"),
-            InlineKeyboardButton(text="📥 رسائل المستخدمين", callback_data="admin_view_feedback")
-        )
+    # 2. إضافة الأزرار الإدارية بناءً على الصلاحيات
+    if perms.get('is_admin'):
+        row_buttons = []
+        
+        # أزرار الصلاحيات الفردية
+        if perms.get('can_settings'):
+            markup.add(InlineKeyboardButton(text="⚙️ الإعدادات الإدارية", callback_data="admin_settings"))
+        if perms.get('can_broadcast'):
+            markup.add(InlineKeyboardButton(text="📢 إرسال رسالة جماعية", callback_data="admin_broadcast"))
+            
+        if perms.get('can_count'):
+            row_buttons.append(InlineKeyboardButton(text="📊 عدد المستخدمين", callback_data="admin_count_users"))
+        if perms.get('can_feedback'):
+            row_buttons.append(InlineKeyboardButton(text="📥 رسائل المستخدمين", callback_data="admin_view_feedback"))
+            
+        if row_buttons:
+            markup.row(*row_buttons)
+            
+        # زر إدارة المشرفين يظهر للمالك فقط (أو من لديه هوية المالك)
+        if perms.get('is_owner') or user_id == OWNER_ID:
+            markup.add(InlineKeyboardButton(text="👥 إدارة المشرفين", callback_data="owner_manage_admins"))
     
     # زر مراسلة الإدارة الثابت للجميع
     markup.add(InlineKeyboardButton(text="📬 مراسلة الإدارة", callback_data="user_contact"))
@@ -30,7 +42,6 @@ def make_sub_menu_markup(parent_id, is_admin=False):
     
     # 1. جلب الأزرار الفرعية التابعة للـ parent_id
     sub_buttons = execute_query("SELECT id, name FROM buttons WHERE parent_id = %s ORDER BY id ASC;", (parent_id,), fetch=True)
-    
     for btn_id, btn_name in sub_buttons:
         markup.add(InlineKeyboardButton(text=btn_name, callback_data=f"open_{btn_id}"))
         
@@ -70,9 +81,7 @@ def make_admin_choose_parent_markup(button_name, exclude_id=None):
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(InlineKeyboardButton(text="📁 في القائمة الرئيسية مباشرة", callback_data=f"setparent_new_{button_name}_null"))
     
-    # جلب جميع الأزرار لتكون خياراً كمجلد أب
     if exclude_id:
-        # عند النقل، نمنع نقل الزر لداخل نفسه لتفادي تعليق شجرة الأزرار
         all_buttons = execute_query("SELECT id, name FROM buttons WHERE id != %s ORDER BY id ASC;", (exclude_id,), fetch=True)
     else:
         all_buttons = execute_query("SELECT id, name FROM buttons ORDER BY id ASC;", fetch=True)
@@ -86,7 +95,6 @@ def make_admin_move_button_markup(button_id):
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(InlineKeyboardButton(text="📁 نقل إلى القائمة الرئيسية", callback_data=f"exec_move_{button_id}_null"))
     
-    # جلب الأزرار الأخرى المتاحة لتكون أب (باستثناء الزر نفسه)
     other_buttons = execute_query("SELECT id, name FROM buttons WHERE id != %s ORDER BY id ASC;", (button_id,), fetch=True)
     for ob_id, ob_name in other_buttons:
         markup.add(InlineKeyboardButton(text=f"📁 داخل [ {ob_name} ]", callback_data=f"exec_move_{button_id}_{ob_id}"))
@@ -98,11 +106,48 @@ def make_admin_file_manager_markup(button_id):
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(InlineKeyboardButton(text="➕ إضافة ملف جديد لهذا الزر", callback_data=f"addfile_{button_id}"))
     
-    # جلب الملفات الحالية المربوطة بالزر
     files = execute_query("SELECT id, file_type FROM button_files WHERE button_id = %s ORDER BY id ASC;", (button_id,), fetch=True)
     for f_record_id, f_type in files:
         markup.add(InlineKeyboardButton(text=f"🗑 حذف ملف ({f_type})", callback_data=f"delfile_{f_record_id}_{button_id}"))
         
     markup.add(InlineKeyboardButton(text="🔙 عودة لخصائص الزر", callback_data=f"choose_edit_{button_id}"))
     return markup
-        
+
+# --- أزرار المالك لإدارة المشرفين وصلاحياتهم (جديد) ---
+
+def make_owner_manage_admins_markup():
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        InlineKeyboardButton(text="➕ إضافة مشرف جديد", callback_data="owner_add_admin"),
+        InlineKeyboardButton(text="🗑️ إزالة مشرف وسحب الصلاحيات", callback_data="owner_remove_admin_list"),
+        InlineKeyboardButton(text="🔙 العودة للقائمة الرئيسية", callback_data="main_menu")
+    )
+    return markup
+
+def make_remove_admin_list_markup():
+    markup = InlineKeyboardMarkup(row_width=1)
+    admins = execute_query("SELECT admin_id FROM admins;", fetch=True)
+    for (adm_id,) in admins:
+        markup.add(InlineKeyboardButton(text=f"❌ إزالة المشرف ({adm_id})", callback_data=f"exec_remove_admin_{adm_id}"))
+    markup.add(InlineKeyboardButton(text="🔙 عودة", callback_data="owner_manage_admins"))
+    return markup
+
+def make_permissions_markup(perms_dict, new_admin_id):
+    markup = InlineKeyboardMarkup(row_width=1)
+    
+    settings_status = "✅" if perms_dict.get('settings') else "❌"
+    broadcast_status = "✅" if perms_dict.get('broadcast') else "❌"
+    feedback_status = "✅" if perms_dict.get('feedback') else "❌"
+    count_status = "✅" if perms_dict.get('count') else "❌"
+    
+    markup.add(
+        InlineKeyboardButton(text=f"{settings_status} صلاحية الإعدادات الإدارية", callback_data=f"toggle_settings_{new_admin_id}"),
+        InlineKeyboardButton(text=f"{broadcast_status} صلاحية إرسال رسالة جماعية", callback_data=f"toggle_broadcast_{new_admin_id}"),
+        InlineKeyboardButton(text=f"{feedback_status} صلاحية رسائل المستخدمين", callback_data=f"toggle_feedback_{new_admin_id}"),
+        InlineKeyboardButton(text=f"{count_status} صلاحية عدد المستخدمين", callback_data=f"toggle_count_{new_admin_id}"),
+        InlineKeyboardButton(text="⚡ منح جميع الصلاحيات", callback_data=f"toggle_all_{new_admin_id}"),
+        InlineKeyboardButton(text="💾 حفظ وإضافة المشرف", callback_data=f"save_admin_{new_admin_id}"),
+        InlineKeyboardButton(text="🔙 إلغاء والعودة", callback_data="owner_manage_admins")
+    )
+    return markup
+    
