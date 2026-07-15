@@ -38,36 +38,35 @@ def check_state(state_name):
     return lambda message: get_user_state(message.from_user.id)[0] == state_name
     # ... الأكواد والدوال القديمة الخاصة بك ...
 
-# ==========================================
-# إضافة الكود الجديد في نهاية الملف:
-# ==========================================
+# قاموس لتخزين معرف رسالة التحكم النشطة حالياً لكل مستخدم
+# الشكل: { user_id: message_id }
+active_menus = {}
 
-# قاموس لتخزين معرف آخر رسالة لكل مستخدم
-last_messages = {}
-
-def send_and_replace(bot, chat_id, text=None, document=None, reply_markup=None):
+def send_files_and_recreate_menu(bot, chat_id, files_list, menu_text, reply_markup):
     """
-    دالة ذكية لحذف الرسالة القديمة وإرسال رسالة أو ملف جديد مكانها.
+    تقوم بحذف قائمة التحكم القديمة، إرسال قائمة ملفات، 
+    ثم إرسال قائمة تحكم جديدة في أسفل الشات تماماً.
     """
-    # 1. محاولة حذف الرسالة القديمة إن وجدت
-    if chat_id in last_messages:
+    # 1. حذف قائمة التحكم القديمة لتجنب تكرار القوائم في الشات
+    if chat_id in active_menus:
         try:
-            bot.delete_message(chat_id, last_messages[chat_id])
+            bot.delete_message(chat_id, active_menus[chat_id])
         except Exception:
-            # نتجاهل أي خطأ في حال قام المستخدم بحذف الرسالة بنفسه
             pass
 
-    # 2. إرسال المحتوى الجديد (ملف أو نص)
-    sent_msg = None
-    if document:
-        sent_msg = bot.send_document(chat_id, document, caption=text, reply_markup=reply_markup)
-    elif text:
-        sent_msg = bot.send_message(chat_id, text, reply_markup=reply_markup)
+    # 2. إرسال جميع الملفات الموجودة في القائمة متتالية
+    for file_id in files_list:
+        try:
+            bot.send_document(chat_id, file_id)
+        except Exception as e:
+            # لتفادي توقف البوت إذا كان هناك ملف تالف أو مفقود
+            print(f"خطأ في إرسال الملف {file_id}: {e}")
 
-    # 3. حفظ معرف الرسالة الجديدة في القاموس
-    if sent_msg:
-        last_messages[chat_id] = sent_msg.message_id
+    # 3. إرسال رسالة التحكم الجديدة في الأسفل لتكون تحت الملفات مباشرة
+    try:
+        new_menu = bot.send_message(chat_id, menu_text, reply_markup=reply_markup)
+        # حفظ معرف القائمة الجديدة لاستخدامه في المرة القادمة
+        active_menus[chat_id] = new_menu.message_id
+    except Exception as e:
+        print(f"خطأ في إرسال القائمة الجديدة: {e}")
         
-    return sent_msg
-    
-  
