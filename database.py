@@ -44,6 +44,18 @@ def execute_query_dict(query, params=()):
 
 def init_db():
     # إنشاء جداول قاعدة البيانات عند التشغيل الأول للبوت
+    # database.py (أضف هذا التعريف داخل دالة init_db)
+
+    # 6. جدول المشرفين الفرعيين وصلاحياتهم
+    execute_query('''
+        CREATE TABLE IF NOT EXISTS admins (
+            admin_id BIGINT PRIMARY KEY,
+            can_settings BOOLEAN DEFAULT FALSE,
+            can_broadcast BOOLEAN DEFAULT FALSE,
+            can_feedback BOOLEAN DEFAULT FALSE,
+            can_count BOOLEAN DEFAULT FALSE
+        );
+    ''', commit=True)
     
     # 1. جدول المستخدمين (لإحصاء وحفظ المشتركين للبث الجماعي)
     execute_query('''
