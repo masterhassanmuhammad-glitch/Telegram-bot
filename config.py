@@ -43,3 +43,8 @@ def run_health_server():
 
 # تشغيل خادم الويب في الخلفية بشكل منفصل
 threading.Thread(target=run_health_server, daemon=True).start()
+# config.py (تأكد من إضافة هذا السطر في نهاية الملف)
+
+# تعريف معرف المالك (أول ID يتم وضعه في قائمة المشرفين بمتغيرات البيئة)
+OWNER_ID = ADMIN_IDS[0] if ADMIN_IDS else None
+
