@@ -36,4 +36,38 @@ def get_permissions(user_id):
 # فلتر مخصص للتحقق من حالة المستخدم (State Filter)
 def check_state(state_name):
     return lambda message: get_user_state(message.from_user.id)[0] == state_name
+    # ... الأكواد والدوال القديمة الخاصة بك ...
+
+# ==========================================
+# إضافة الكود الجديد في نهاية الملف:
+# ==========================================
+
+# قاموس لتخزين معرف آخر رسالة لكل مستخدم
+last_messages = {}
+
+def send_and_replace(bot, chat_id, text=None, document=None, reply_markup=None):
+    """
+    دالة ذكية لحذف الرسالة القديمة وإرسال رسالة أو ملف جديد مكانها.
+    """
+    # 1. محاولة حذف الرسالة القديمة إن وجدت
+    if chat_id in last_messages:
+        try:
+            bot.delete_message(chat_id, last_messages[chat_id])
+        except Exception:
+            # نتجاهل أي خطأ في حال قام المستخدم بحذف الرسالة بنفسه
+            pass
+
+    # 2. إرسال المحتوى الجديد (ملف أو نص)
+    sent_msg = None
+    if document:
+        sent_msg = bot.send_document(chat_id, document, caption=text, reply_markup=reply_markup)
+    elif text:
+        sent_msg = bot.send_message(chat_id, text, reply_markup=reply_markup)
+
+    # 3. حفظ معرف الرسالة الجديدة في القاموس
+    if sent_msg:
+        last_messages[chat_id] = sent_msg.message_id
+        
+    return sent_msg
+    
   
