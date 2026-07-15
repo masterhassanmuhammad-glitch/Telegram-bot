@@ -457,4 +457,141 @@ def register_handlers():
             
             bot.answer_callback_query(call.id, "✅ تم حذف الزر وكافة تفاصيله وفروعه نهائياً من السيستم!", show_alert=True)
             bot.edit_message_text(
+                chat_id=user_id,
+                message_id=call.message.message_id,
+                text="⚙️ تم التحديث بنجاح! اختر إجراءً آخر من لوحة التحكم:",
+                reply_markup=make_admin_settings_markup()
+            )
+            return
+
+        # تعديل زر (اختيار الزر للتعديل)
+        if data_call == "adm_edit_btn":
+            buttons = execute_query("SELECT id, name FROM buttons ORDER BY id ASC;", fetch=True)
+            if not buttons:
+                bot.answer_callback_query(call.id, "⚠️ لا توجد أزرار مضافة لتعديلها حالياً!", show_alert=True)
+                return
             
+            markup = telebot.types.InlineKeyboardMarkup(row_width=1)
+            for b_id, b_name in buttons:
+                markup.add(telebot.types.InlineKeyboardButton(text=f"✏️ تعديل: {b_name}", callback_data=f"choose_edit_{b_id}"))
+            markup.add(telebot.types.InlineKeyboardButton(text="🔙 إلغاء", callback_data="admin_settings"))
+            
+            bot.edit_message_text(
+                chat_id=user_id,
+                message_id=call.message.message_id,
+                text="✏️ اختر الزر الذي ترغب بتعديل خصائصه وملفاته وموقعه:",
+                reply_markup=markup
+            )
+            bot.answer_callback_query(call.id)
+            return
+
+        # استعراض خيارات تعديل زر معين
+        if data_call.startswith("choose_edit_"):
+            btn_id = int(data_call.split("_")[2])
+            btn_info = execute_query("SELECT name FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
+            if not btn_info:
+                bot.answer_callback_query(call.id, "⚠️ هذا الزر غير متوفر!")
+                return
+                
+            bot.edit_message_text(
+                chat_id=user_id,
+                message_id=call.message.message_id,
+                text=f"🛠 تعديل خصائص الزر: [ {btn_info[0][0]} ]\n\nاختر الحقل الذي تود العمل عليه:",
+                reply_markup=make_admin_edit_options_markup(btn_id)
+            )
+            bot.answer_callback_query(call.id)
+            return
+
+        # طلب تعديل الاسم للزر
+        if data_call.startswith("editopt_name_"):
+            btn_id = int(data_call.split("_")[2])
+            set_user_state(user_id, "WAITING_EDIT_NAME", {"button_id": btn_id})
+            bot.edit_message_text(
+                chat_id=user_id,
+                message_id=call.message.message_id,
+                text="✍️ حسناً، أرسل الاسم الجديد للزر الآن:"
+            )
+            bot.answer_callback_query(call.id)
+            return
+
+        # طلب تعديل الرسالة للزر
+        if data_call.startswith("editopt_msg_"):
+            btn_id = int(data_call.split("_")[2])
+            set_user_state(user_id, "WAITING_EDIT_TEXT", {"button_id": btn_id})
+            bot.edit_message_text(
+                chat_id=user_id,
+                message_id=call.message.message_id,
+                text="✍️ حسناً، أرسل الرسالة التوضيحية الجديدة للزر الآن:"
+            )
+            bot.answer_callback_query(call.id)
+            return
+
+        # طلب نقل الزر لمكان آخر (تعديل الأب)
+        if data_call.startswith("editopt_move_"):
+            btn_id = int(data_call.split("_")[2])
+            bot.edit_message_text(
+                chat_id=user_id,
+                message_id=call.message.message_id,
+                text="🔄 اختر المجلد الجديد الذي ترغب بنقل هذا الزر إليه:",
+                reply_markup=make_admin_move_button_markup(btn_id)
+            )
+            bot.answer_callback_query(call.id)
+            return
+
+        # تنفيذ عملية النقل فعلياً
+        if data_call.startswith("exec_move_"):
+            parts = data_call.split("_")
+            btn_id = int(parts[2])
+            parent_raw = parts[3]
+            
+            parent_id = None if parent_raw == "null" else int(parent_raw)
+            execute_query("UPDATE buttons SET parent_id = %s WHERE id = %s;", (parent_id, btn_id), commit=True)
+            
+            bot.answer_callback_query(call.id, "✅ تم نقل الزر بنجاح وتحديث الشجرة الهيكلية!", show_alert=True)
+            bot.edit_message_text(
+                chat_id=user_id,
+                message_id=call.message.message_id,
+                text="🛠 تم تحديث موضع الزر بنجاح. ما الذي ترغب بفعله الآن؟",
+                reply_markup=make_admin_edit_options_markup(btn_id)
+            )
+            return
+
+        # فتح لوحة إدارة الملفات المربوطة بالزر
+        if data_call.startswith("editopt_files_"):
+            btn_id = int(data_call.split("_")[2])
+            bot.edit_message_text(
+                chat_id=user_id,
+                message_id=call.message.message_id,
+                text="📁 قائمة الملفات المربوطة بهذا الزر حالياً. يمكنك إضافة المزيد أو حذف الملفات القديمة:",
+                reply_markup=make_admin_file_manager_markup(btn_id)
+            )
+            bot.answer_callback_query(call.id)
+            return
+
+        # طلب رفع ملف جديد للزر
+        if data_call.startswith("addfile_"):
+            btn_id = int(data_call.split("_")[1])
+            set_user_state(user_id, "WAITING_ADD_FILE", {"button_id": btn_id})
+            bot.edit_message_text(
+                chat_id=user_id,
+                message_id=call.message.message_id,
+                text="📤 أرسل الآن الملف الذي تريد ربطه بالزر (مستند PDF، صورة، فيديو، ملف صوتي، إلخ):\n\n(سيقوم البوت بحفظه وتمريره ديناميكياً للطلاب)"
+            )
+            bot.answer_callback_query(call.id)
+            return
+
+        # حذف ملف مربوط بزر
+        if data_call.startswith("delfile_"):
+            parts = data_call.split("_")
+            file_record_id = int(parts[1])
+            btn_id = int(parts[2])
+            
+            execute_query("DELETE FROM button_files WHERE id = %s;", (file_record_id,), commit=True)
+            bot.answer_callback_query(call.id, "✅ تم حذف الملف بنجاح من قاعدة البيانات!", show_alert=True)
+            bot.edit_message_text(
+                chat_id=user_id,
+                message_id=call.message.message_id,
+                text="📁 تم تحديث الملفات بنجاح. يمكنك إضافة ملفات أخرى أو العودة:",
+                reply_markup=make_admin_file_manager_markup(btn_id)
+            )
+            return
