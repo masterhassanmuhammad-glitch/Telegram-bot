@@ -237,3 +237,39 @@ def register_user_handlers():
                 )
             except Exception:
                 pass
+                @bot.callback_query_handler(func=lambda call: call.data == "check_membership")
+def handle_check_membership(call):
+    chat_id = call.message.chat.id
+    user_id = call.from_user.id
+
+    if is_user_in_batch(bot, user_id):
+
+        try:
+            bot.delete_message(chat_id, call.message.message_id)
+        except Exception:
+            pass
+
+        clear_user_state(user_id)
+
+        perms = get_permissions(user_id)
+
+        bot.answer_callback_query(
+            call.id,
+            "✅ تم التحقق بنجاح! مرحباً بك في بوت الدفعة.",
+            show_alert=True
+        )
+
+        sent_menu = bot.send_message(
+            chat_id,
+            "👋 أهلاً بك في البوت الطبي التعليمي.\n\nالرجاء استخدام الأزرار أدناه للتنقل وتصفح الملفات والمحاضرات الطبية بسهولة 👇",
+            reply_markup=make_main_menu_markup(perms, user_id)
+        )
+
+        active_menus[chat_id] = sent_menu.message_id
+
+    else:
+        bot.answer_callback_query(
+            call.id,
+            "❌ لم تنضم إلى مجموعة الدفعة بعد.\n\nانضم أولاً ثم اضغط على زر (تحقق من الانضمام).",
+            show_alert=True
+    ) 
