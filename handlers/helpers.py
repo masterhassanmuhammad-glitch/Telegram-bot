@@ -1,3 +1,4 @@
+from telebot import types
 from config import ADMIN_IDS, OWNER_ID
 from database import execute_query, get_user_state
 
