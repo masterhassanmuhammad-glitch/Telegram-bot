@@ -1,3 +1,9 @@
+# أضف هذا الكود في أعلى ملف handlers/admin.py
+@bot.callback_query_handler(func=lambda call: True)
+def debug_all_callbacks(call):
+    print(f"DEBUG: تم النقر على زر، البيانات المستلمة هي: {call.data}")
+    # لا تضف أي شيء آخر، اترك الكود يمر للمعالجات التالية
+
 import telebot
 from config import bot, ADMIN_IDS, OWNER_ID
 from database import execute_query, execute_query_dict, set_user_state, get_user_state, clear_user_state
