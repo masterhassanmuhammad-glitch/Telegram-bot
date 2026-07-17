@@ -246,12 +246,11 @@ def is_user_in_batch(bot, user_id):
 
 def send_join_request_menu(bot, chat_id):
     """
-    تظهر للمستخدم إذا لم يكن عضواً في المجموعة بعد تعديلاتك.
+    تظهر للمستخدم إذا لم يكن عضواً في المجموعة مع إضافة زر المراسلة.
     """
-
     keyboard = types.InlineKeyboardMarkup(row_width=1)
 
-    # تم حذف زر رابط الانضمام كما طلبت
+    # زر التحقق
     keyboard.add(
         types.InlineKeyboardButton(
             "التحقق من عضوية الطالب لدى الدفعة 35&36",
@@ -259,10 +258,18 @@ def send_join_request_menu(bot, chat_id):
         )
     )
 
+    # زر مراسلة الإدارة
+    keyboard.add(
+        types.InlineKeyboardButton(
+            "📬 مراسلة الإدارة",
+            callback_data="user_contact",
+        )
+    )
+
     text = (
         "السلام عليكم ورحمة الله وبركاته 💫 \n\n"
         "دمتم طيبين وحللتم طيبين 🥳\n\n"
-        "هذا البوت مخصص لطلاب جامعة أم درمان الإسلامية طب، الدفعتان 35 & 36 🎓.\n\n"
+        "هذا البوت مخصص لطلاب جامعة أم درمان الإسلامية طب، الدفعة 35 & 36 🎓.\n\n"
         "إذا لديكم أي استفسار، يرجى إطلاعنا، وشكراً 🎉"
     )
 
@@ -272,3 +279,4 @@ def send_join_request_menu(bot, chat_id):
         parse_mode="Markdown",
         reply_markup=keyboard,
     )
+    
