@@ -120,19 +120,26 @@ def register_user_handlers():
         btn_id = int(parts[1])
         
         try:
-            # جلب معلومات الزر من قاعدة البيانات
+                # دالة فتح المجلد وإرسال الملفات (النسخة المصححة لجدول button_files)
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
+    def cb_open_folder(call):
+        bot.answer_callback_query(call.id)
+        user_id = call.from_user.id
+        parts = call.data.split("_")
+        btn_id = int(parts[1])
+        
+        try:
             btn_info = execute_query("SELECT name, message_text FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
             if not btn_info: 
                 bot.send_message(call.message.chat.id, "⚠️ عذراً، هذا القسم غير موجود أو تم حذفه مسبقاً.")
                 return
             btn_name, msg_text = btn_info[0]
             
-            # 2. جلب الملفات بدون ORDER BY id لتفادي انهيار البوت إذا كان الجدول لا يحتوي على عمود id
-            files_data = execute_query("SELECT file_id, file_type, NULL FROM files WHERE button_id = %s;", (btn_id,), fetch=True)
+            # التعديل هنا: العودة لاسم الجدول الصحيح button_files مع الترتيب
+            files_data = execute_query("SELECT file_id, file_type, NULL FROM button_files WHERE button_id = %s ORDER BY id ASC;", (btn_id,), fetch=True)
             
             perms = get_permissions(user_id)
             
-            # إرسال المحتوى وإعادة بناء القائمة للدانفيل أو المجلد الحالي
             send_files_and_recreate_menu(
                 bot, 
                 call.message.chat.id, 
@@ -142,9 +149,9 @@ def register_user_handlers():
             )
             
         except Exception as e:
-            # في حال حدوث أي خطأ آخر سيوضح لك الـ Terminal السبب بالتفصيل دون أن يعلق البوت
-            print(f"❌ خطأ برمي داخل دالة cb_open_folder: {e}")
-            bot.send_message(call.message.chat.id, "❌ عذراً دكتور، حدث خطأ داخلي أثناء محاولة فتح هذا القسم.")
+            print(f"❌ خطأ برمجي داخل دالة cb_open_folder: {e}")
+            bot.send_message(call.message.chat.id, f"❌ حدث خطأ داخلي في الكود:\n\n`{str(e)}`")
+            
             
     @bot.callback_query_handler(func=lambda call: call.data == "user_contact")
     def cb_user_contact(call):
