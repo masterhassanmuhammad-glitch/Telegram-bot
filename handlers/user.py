@@ -13,6 +13,11 @@ from handlers.helpers import get_permissions, check_state
 
 def register_user_handlers():
 
+    @bot.message_handler(func=lambda message: True)
+    def get_chat_id(message):
+    print(message.chat.id)
+
+    
     @bot.message_handler(commands=['start'])
     def cmd_start(message):
         chat_id = message.chat.id
