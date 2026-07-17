@@ -1,4 +1,4 @@
-from .helpers import (  # تأكد هنا أن اسم الملف هو نفس اسم ملفك (مثلاً helpers.py)
+from .helpers import (
     active_menus,
     send_files_and_recreate_menu,
     is_user_in_batch,
@@ -13,27 +13,16 @@ from keyboards import make_main_menu_markup, make_sub_menu_markup
 
 def register_user_handlers():
 
-    @bot.message_handler(
-    func=lambda message: True,
-    content_types=["text"]
-)
-    
-def get_chat_id(message):
-    print(
-        "========== MESSAGE =========="
-    )
-    print("Type:", message.chat.type)
-    print("Title:", message.chat.title)
-    print("ID:", message.chat.id)
-    print(
-        "============================="
-    )
-
-    
+    # هذا المعالج يطبع الـ ID الخاص بالمجموعات فقط دون التأثير على البوت
     @bot.message_handler(func=lambda message: message.chat.type in ["group", "supergroup"])
     def debug_chat_id(message):
-        print(f"DEBUG: Group Chat ID is {message.chat.id}")
+        print(f"========== MESSAGE ==========")
+        print(f"Type: {message.chat.type}")
+        print(f"Title: {message.chat.title}")
+        print(f"ID: {message.chat.id}")
+        print(f"=============================")
 
+    # أمر البدء
     @bot.message_handler(commands=['start'])
     def cmd_start(message):
         chat_id = message.chat.id
@@ -79,6 +68,7 @@ def get_chat_id(message):
 
         active_menus[chat_id] = sent_menu.message_id
 
+    # العودة للقائمة الرئيسية
     @bot.callback_query_handler(func=lambda call: call.data == "main_menu")
     def cb_main_menu(call):
         user_id = call.from_user.id
@@ -95,6 +85,7 @@ def get_chat_id(message):
 
         bot.answer_callback_query(call.id)
 
+    # فتح المجلدات/الأقسام
     @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
     def cb_open_folder(call):
         user_id = call.from_user.id
@@ -140,6 +131,7 @@ def get_chat_id(message):
 
         bot.answer_callback_query(call.id)
 
+    # طلب مراسلة الإدارة
     @bot.callback_query_handler(func=lambda call: call.data == "user_contact")
     def cb_user_contact(call):
         user_id = call.from_user.id
@@ -152,6 +144,7 @@ def get_chat_id(message):
         )
         bot.answer_callback_query(call.id)
 
+    # معالجة رسالة المراسلة
     @bot.message_handler(func=check_state("WAITING_FEEDBACK_MSG"), content_types=["text"])
     def handle_user_feedback(message):
         user_id = message.from_user.id
@@ -182,6 +175,7 @@ def get_chat_id(message):
                 bot.send_message(target_admin, f"📬 رسالة جديدة من المستخدم @{username} ({user_id}):\n\n📄 {message.text}")
             except Exception: pass
 
+    # التحقق من العضوية
     @bot.callback_query_handler(func=lambda call: call.data == "check_membership")
     def handle_check_membership(call):
         chat_id = call.message.chat.id
@@ -203,4 +197,4 @@ def get_chat_id(message):
             active_menus[chat_id] = sent_menu.message_id
         else:
             bot.answer_callback_query(call.id, "❌ لم تنضم إلى مجموعة الدفعة بعد.", show_alert=True)
-                                
+        
