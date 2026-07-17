@@ -1,15 +1,12 @@
+# handlers/__init__.py
+from .admin import register_admin_handlers  # استدعي الإدارة أولاً
 from .user import register_user_handlers
-from .admin import register_admin_handlers
 from .owner import register_owner_handlers
 from .fallback import register_fallback_handlers
 
 def init_handlers():
-    # ⚠️ الترتيب هنا في غاية الأهمية!
-    # نسجل أولاً المعالجات ذات الشروط الصارمة لكي يتم استدعاؤها في البداية عند التطابق
+    # الترتيب مهم جداً
+    register_admin_handlers() 
     register_user_handlers()
-    register_admin_handlers()
     register_owner_handlers()
-    
-    # نترك معالج الطوارئ في النهاية تماماً ليلتقط أي رسالة لم تجد لها حلاً مسبقاً
     register_fallback_handlers()
-  
