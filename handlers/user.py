@@ -1,28 +1,24 @@
-from .helpers import (
+from .handlers import (
     active_menus,
     send_files_and_recreate_menu,
     is_user_in_batch,
     send_join_request_menu,
+    get_permissions,
+    check_state
 )
 
 from config import bot, OWNER_ID, ADMIN_IDS
 from database import execute_query, set_user_state, clear_user_state
 from keyboards import make_main_menu_markup, make_sub_menu_markup
-from handlers.helpers import get_permissions, check_state
-
 
 def register_user_handlers():
 
+    # معالج خاص للمجموعات فقط لمعرفة الـ ID
     @bot.message_handler(func=lambda message: message.chat.type in ["group", "supergroup"])
-def debug_chat_id(message):
-    # إرسال ID كرسالة في المجموعة (للتأكد أن البوت يرى الرسالة)
-    bot.send_message(message.chat.id, f"ID الخاص بهذه المجموعة هو: {message.chat.id}")
-    print(f"DEBUG: Group Chat ID is {message.chat.id}")
-    
-    # طباعة معرف المجموعة عند التفاعل داخلها
-    @bot.message_handler(func=lambda message: message.chat.type in ["group", "supergroup"])
-    def get_chat_id(message):
-        print(f"Chat ID: {message.chat.id}")
+    def debug_chat_id(message):
+        print(f"DEBUG: Group Chat ID is {message.chat.id}")
+        # يمكنك تفعيل السطر التالي إذا أردت أن يرد البوت بالـ ID في المجموعة
+        # bot.reply_to(message, f"ID الخاص بهذه المجموعة هو: {message.chat.id}")
 
     # أمر البدء
     @bot.message_handler(commands=['start'])
@@ -75,8 +71,6 @@ def debug_chat_id(message):
     def cb_main_menu(call):
         user_id = call.from_user.id
         chat_id = call.message.chat.id
-
-        print(f"📥 [ريندر - زر] {call.from_user.first_name} عاد للقائمة الرئيسية.")
 
         clear_user_state(user_id)
         perms = get_permissions(user_id)
@@ -201,4 +195,4 @@ def debug_chat_id(message):
             active_menus[chat_id] = sent_menu.message_id
         else:
             bot.answer_callback_query(call.id, "❌ لم تنضم إلى مجموعة الدفعة بعد.", show_alert=True)
-            
+        
