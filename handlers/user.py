@@ -84,7 +84,7 @@ def register_user_handlers():
             else:
                 show_main_menu(call.message.chat.id, user_id)
         else:
-            bot.answer_callback_query(call.id, عذراً، أنت لست عضواً في كلية الطب من الدفعتين 35&36.", show_alert=True)
+            bot.answer_callback_query(call.id, "عذراً، أنت لست عضواً في كلية الطب من الدفعتين 35&36", show_alert=True)
 
     # 5. عرض القائمة الرئيسية (دالة مساعدة)
     def show_main_menu(chat_id, user_id):
