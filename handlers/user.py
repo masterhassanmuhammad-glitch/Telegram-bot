@@ -109,6 +109,7 @@ def register_user_handlers():
         show_main_menu(call.message.chat.id, call.from_user.id)
         bot.answer_callback_query(call.id)
 
+    # دالة فتح المجلد وإرسال الملفات بعد تعديل اسم الجدول
     @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
     def cb_open_folder(call):
         user_id = call.from_user.id
@@ -117,7 +118,10 @@ def register_user_handlers():
         btn_info = execute_query("SELECT name, message_text FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
         if not btn_info: return
         btn_name, msg_text = btn_info[0]
-        files_data = execute_query("SELECT file_id, file_type, NULL FROM button_files WHERE button_id = %s ORDER BY id ASC;", (btn_id,), fetch=True)
+        
+        # التعديل التم هنا: تم تغيير اسم الجدول إلى files ليتوافق مع الحفظ في الـ admin
+        files_data = execute_query("SELECT file_id, file_type, NULL FROM files WHERE button_id = %s ORDER BY id ASC;", (btn_id,), fetch=True)
+        
         perms = get_permissions(user_id)
         send_files_and_recreate_menu(bot, call.message.chat.id, files_data, f"📂 {btn_name}\n\n{msg_text or ''}", make_sub_menu_markup(btn_id, perms["is_admin"]))
         bot.answer_callback_query(call.id)
