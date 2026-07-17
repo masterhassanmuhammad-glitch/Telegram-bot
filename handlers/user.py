@@ -17,6 +17,7 @@ def register_user_handlers():
     func=lambda message: True,
     content_types=["text"]
 )
+    
 def get_chat_id(message):
     print(
         "========== MESSAGE =========="
