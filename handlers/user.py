@@ -13,6 +13,12 @@ from handlers.helpers import get_permissions, check_state
 
 def register_user_handlers():
 
+    @bot.message_handler(func=lambda message: message.chat.type in ["group", "supergroup"])
+def debug_chat_id(message):
+    # إرسال ID كرسالة في المجموعة (للتأكد أن البوت يرى الرسالة)
+    bot.send_message(message.chat.id, f"ID الخاص بهذه المجموعة هو: {message.chat.id}")
+    print(f"DEBUG: Group Chat ID is {message.chat.id}")
+    
     # طباعة معرف المجموعة عند التفاعل داخلها
     @bot.message_handler(func=lambda message: message.chat.type in ["group", "supergroup"])
     def get_chat_id(message):
