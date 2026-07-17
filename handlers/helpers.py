@@ -246,31 +246,33 @@ def is_user_in_batch(bot, user_id):
 
 def send_join_request_menu(bot, chat_id):
     """
-    تظهر للمستخدم إذا لم يكن عضواً في المجموعة.
+    تظهر للمستخدم إذا لم يكن عضواً في المجموعة بعد تعديلاتك.
     """
 
     keyboard = types.InlineKeyboardMarkup(row_width=1)
 
+    # تم حذف زر رابط الانضمام كما طلبت
     keyboard.add(
         types.InlineKeyboardButton(
-            "📢 الانضمام إلى مجموعة الدفعة",
-            url=GROUP_LINK,
-        )
-    )
-
-    keyboard.add(
-        types.InlineKeyboardButton(
-            "✅ تم الانضمام - تحقق الآن",
+            "التحقق من عضوية الطالب لدى الدفعة 35&36",
             callback_data="check_membership",
         )
     )
 
     text = (
-        "⚠️ *هذا البوت مخصص لطلاب الدفعة فقط.*\n\n"
-        "يرجى الانضمام إلى مجموعة الدفعة أولاً، "
-        "ثم اضغط على زر *تم الانضمام - تحقق الآن*."
+        "السلام عليكم ورحمة الله وبركاته 💫 \n\n"
+        "دمتم طيبين وحللتم طيبين 🥳\n\n"
+        "هذا البوت مخصص لطلاب جامعة أم درمان الإسلامية، الدفعتان 35 & 36 🎓.\n\n"
+        "إذا لديكم أي استفسار، يرجى إطلاعنا، وشكراً 🎉"
     )
 
+    bot.send_message(
+        chat_id,
+        text,
+        parse_mode="Markdown",
+        reply_markup=keyboard,
+    )
+    
     bot.send_message(
         chat_id,
         text,
