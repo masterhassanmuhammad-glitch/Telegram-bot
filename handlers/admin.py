@@ -33,19 +33,49 @@ def register_admin_handlers():
         )
         bot.answer_callback_query(call.id)
 
-    # البث الجماعي للطلاب
+        # ==========================================
+    # البث الجماعي للطلاب (مع ميزة الإلغاء)
+    # ==========================================
     @bot.callback_query_handler(func=lambda call: call.data == "admin_broadcast")
     def cb_admin_broadcast_init(call):
         user_id = call.from_user.id
         perms = get_permissions(user_id)
         if not is_admin_or_alert(call, perms, 'can_broadcast'): return
+        
+        # 1. تعيين حالة الانتظار
         set_user_state(user_id, "WAITING_BROADCAST_MSG")
+        
+        # 2. إنشاء زر الإلغاء ونوعه إنلاين
+        cancel_markup = telebot.types.InlineKeyboardMarkup()
+        cancel_markup.add(telebot.types.InlineKeyboardButton(text="❌ إلغاء العملية", callback_data="cancel_broadcast"))
+        
+        # 3. تعديل النص وإظهار زر الإلغاء
         bot.edit_message_text(
             chat_id=user_id, message_id=call.message.message_id,
-            text="📢 أرسل الآن الرسالة النصية التي تريد نشرها لكافة مستخدمي البوت:\n\n(اضغط /start للإلغاء)"
+            text="📢 أرسل الآن الرسالة النصية التي تريد نشرها لكافة مستخدمي البوت👇:",
+            reply_markup=cancel_markup
         )
         bot.answer_callback_query(call.id)
 
+    # معالج الضغط على زر إلغاء البث
+    @bot.callback_query_handler(func=lambda call: call.data == "cancel_broadcast")
+    def cb_cancel_broadcast(call):
+        user_id = call.from_user.id
+        
+        # 1. تصفير حالة الأدمن فوراً لمنع استقبال أي نص
+        clear_user_state(user_id)
+        
+        # 2. تنبيه سريع بالإلغاء يظهر أعلى الشاشة
+        bot.answer_callback_query(call.id, "💥 تم إلغاء الإرسال الجماعي.", show_alert=False)
+        
+        # 3. إعادة المشرف إلى لوحة التحكم الرئيسية مباشرة
+        bot.edit_message_text(
+            chat_id=user_id, message_id=call.message.message_id,
+            text="⚙️ مرحباً بك في لوحة تحكم المشرف.\n\nالرجاء تحديد الإجراء الذي ترغب في القيام به:",
+            reply_markup=make_admin_settings_markup()
+        )
+
+    # معالج استقبال الرسالة بعد التأكد من عدم الإلغاء
     @bot.message_handler(func=check_state("WAITING_BROADCAST_MSG"), content_types=['text'])
     def process_broadcast_message(message):
         user_id = message.from_user.id
@@ -53,6 +83,7 @@ def register_admin_handlers():
         if not perms['can_broadcast']:
             clear_user_state(user_id)
             return
+            
         all_users = execute_query("SELECT user_id FROM users;", fetch=True)
         success_count = 0
         for u_id_tuple in all_users:
@@ -61,8 +92,10 @@ def register_admin_handlers():
                 bot.send_message(u_id, f"📢 إعلان هام من الإدارة:\n\n{message.text}")
                 success_count += 1
             except Exception: pass
+            
         clear_user_state(user_id)
         bot.send_message(user_id, f"✅ تم إرسال الإعلان الجماعي بنجاح إلى {success_count} مستخدم.", reply_markup=make_main_menu_markup(perms, user_id))
+        
 
     # عرض عدد المستخدمين
     @bot.callback_query_handler(func=lambda call: call.data == "admin_count_users")
