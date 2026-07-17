@@ -20,11 +20,21 @@ def register_user_handlers():
         chat_id = message.chat.id
         user_id = message.from_user.id
         username = message.from_user.username or "NoUsername"
+        first_name = message.from_user.first_name or ""
+        last_name = message.from_user.last_name or ""
 
-        # تسجيل المستخدم في قاعدة البيانات
+        # تسجيل المستخدم في قاعدة البيانات مع حفظ الأسماء
         execute_query(
-            "INSERT INTO users (user_id, username) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET username = EXCLUDED.username;",
-            (user_id, username),
+            """
+            INSERT INTO users (user_id, username, first_name, last_name)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (user_id)
+            DO UPDATE SET 
+                username = EXCLUDED.username,
+                first_name = EXCLUDED.first_name,
+                last_name = EXCLUDED.last_name;
+            """,
+            (user_id, username, first_name, last_name),
             commit=True
         )
 
