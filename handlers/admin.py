@@ -79,18 +79,29 @@ def register_admin_handlers():
         user_id = call.from_user.id
         perms = get_permissions(user_id)
         if not is_admin_or_alert(call, perms, 'can_feedback'): return
-        feedbacks = execute_query_dict("SELECT id, user_id, username, message_text FROM feedback WHERE status = 'pending' ORDER BY id DESC LIMIT 5;")
+        
+        # إزالة LIMIT 5 لجلب كافة الرسائل المعلقة
+        feedbacks = execute_query_dict("SELECT id, user_id, username, message_text FROM feedback WHERE status = 'pending' ORDER BY id DESC;")
+        
         if not feedbacks:
-            bot.answer_callback_query(call.id, "📥 لا توجد رسائل معلقة حالياً! كل شيء هادئ.", show_alert=True)
+            bot.answer_callback_query(call.id, "📥 لا توجد رسائل معلقة حالياً!", show_alert=True)
             return
+
+        markup = telebot.types.InlineKeyboardMarkup()
+        markup.add(telebot.types.InlineKeyboardButton(text="🔙 العودة للقائمة الرئيسية", callback_data="main_menu"))
+        
         bot.edit_message_text(
             chat_id=user_id, message_id=call.message.message_id,
-            text="📥 إليك آخر 5 رسائل معلقة من الأعضاء:",
-            reply_markup=make_admin_settings_markup()
+            text=f"📥 إليك جميع الرسائل المعلقة ({len(feedbacks)} رسالة):",
+            reply_markup=markup
         )
+        
         for fb in feedbacks:
             reply_markup = telebot.types.InlineKeyboardMarkup()
-            reply_markup.add(telebot.types.InlineKeyboardButton(text="💬 الرد على الرسالة", callback_data=f"replyfb_{fb['id']}_{fb['user_id']}"))
+            reply_markup.add(
+                telebot.types.InlineKeyboardButton(text="💬 الرد", callback_data=f"replyfb_{fb['id']}_{fb['user_id']}"),
+                telebot.types.InlineKeyboardButton(text="🗑 حذف", callback_data=f"delfb_{fb['id']}")
+            )
             bot.send_message(
                 user_id,
                 f"👤 العضو: @{fb['username']} ({fb['user_id']})\n\n📄 الرسالة:\n{fb['message_text']}",
@@ -98,6 +109,20 @@ def register_admin_handlers():
             )
         bot.answer_callback_query(call.id)
 
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("delfb_"))
+    def cb_delete_feedback(call):
+        user_id = call.from_user.id
+        perms = get_permissions(user_id)
+        if not is_admin_or_alert(call, perms, 'can_feedback'): return
+        
+        fb_id = int(call.data.split("_")[1])
+        # تغيير الحالة إلى 'deleted' بدلاً من الحذف الفيزيائي للاحتفاظ بالسجل
+        execute_query("UPDATE feedback SET status = 'deleted' WHERE id = %s;", (fb_id,), commit=True)
+        
+        bot.answer_callback_query(call.id, "✅ تم حذف الرسالة بنجاح.", show_alert=True)
+        # حذف الرسالة الأصلية من الشات
+        bot.delete_message(chat_id=user_id, message_id=call.message.message_id)
+        
     @bot.callback_query_handler(func=lambda call: call.data.startswith("replyfb_"))
     def cb_reply_feedback_init(call):
         user_id = call.from_user.id
