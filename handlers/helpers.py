@@ -209,7 +209,7 @@ def send_files_and_recreate_menu(
 BATCH_GROUP_ID = -1001234567890
 
 # رابط الدعوة للمجموعة
-GROUP_LINK = "https://t.me/+YourInviteLink"
+GROUP_LINK = "https://t.me/+yB74ZDAEckM5NGE0"
 
 
 # ==========================================================
