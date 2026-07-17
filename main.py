@@ -10,6 +10,9 @@ if __name__ == "__main__":
     print("⚙️ جاري تسجيل ومعالجة كافة الأوامر والملفات المقسمة...")
     init_handlers()
     
+    # إضافة هذا السطر لإلغاء أي Webhook قديم عالق
+    config.bot.remove_webhook()
+    
     print("🚀 تم تشغيل البوت بنجاح ويقوم بالبث التفاعلي الآن!")
     config.bot.infinity_polling()
     
