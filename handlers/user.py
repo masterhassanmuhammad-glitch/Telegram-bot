@@ -128,10 +128,45 @@ def register_user_handlers():
         bot.edit_message_text(chat_id=call.from_user.id, message_id=call.message.message_id, text="📝 اكتب استفسارك هنا:")
         bot.answer_callback_query(call.id)
 
+    # 7. معالجة الرسالة مع تفاصيل الطالب
     @bot.message_handler(func=check_state("WAITING_FEEDBACK_MSG"), content_types=["text"])
     def handle_feedback(message):
-        execute_query("INSERT INTO feedback (user_id, username, message_text) VALUES (%s, %s, %s);", (message.from_user.id, message.from_user.username or "N/A", message.text), commit=True)
-        clear_user_state(message.from_user.id)
-        bot.send_message(message.from_user.id, "✅ تم إرسال رسالتك!")
-        show_main_menu(message.chat.id, message.from_user.id)
+        user_id = message.from_user.id
+        user_text = message.text
+        
+        # حفظ الرسالة في قاعدة البيانات
+        execute_query("INSERT INTO feedback (user_id, username, message_text) VALUES (%s, %s, %s);", 
+                      (user_id, message.from_user.username or "N/A", user_text), commit=True)
+        
+        # جلب بيانات الطالب كاملة من قاعدة البيانات
+        user_info = execute_query("SELECT first_name, last_name, phone_number FROM users WHERE user_id = %s;", 
+                                  (user_id,), fetch=True)
+        
+        f_name, l_name, phone = ("", "", "غير مسجل")
+        if user_info:
+            f_name, l_name, phone = user_info[0]
+
+        # صياغة رسالة الإدارة
+        admin_notification = (
+            f"📬 رسالة جديدة من المستخدم:\n\n"
+            f"👤 الاسم: {f_name} {l_name}\n"
+            f"🆔 ID: {user_id}\n"
+            f"📱 الهاتف: {phone}\n"
+            f"🔗 المعرف: @{message.from_user.username or 'لا يوجد'}\n\n"
+            f"📄 المحتوى:\n{user_text}"
+        )
+
+        # إرسال للإدارة
+        notify_ids = {OWNER_ID} if OWNER_ID else set()
+        db_admins = execute_query("SELECT admin_id FROM admins WHERE can_feedback = TRUE;", fetch=True)
+        for (adm_id,) in db_admins: notify_ids.add(adm_id)
+        for static_adm in ADMIN_IDS: notify_ids.add(static_adm)
+
+        for admin_id in notify_ids:
+            try: bot.send_message(admin_id, admin_notification)
+            except: pass
+
+        clear_user_state(user_id)
+        bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
+        show_main_menu(message.chat.id, user_id)
         
