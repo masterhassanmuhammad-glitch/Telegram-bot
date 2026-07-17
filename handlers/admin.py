@@ -213,7 +213,7 @@ def register_admin_handlers():
         )
         bot.answer_callback_query(call.id)
 
-    @bot.callback_query_handler(func=lambda call: call.data == "adm_del_list")
+    @bot.callback_query_handler(func=lambda call: call.data == "adm_del_btn")
     def cb_delete_list(call):
         print(f"DEBUG: cb_delete_list triggered with data: {call.data}")
         user_id = call.from_user.id
