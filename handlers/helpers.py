@@ -272,10 +272,3 @@ def send_join_request_menu(bot, chat_id):
         parse_mode="Markdown",
         reply_markup=keyboard,
     )
-    
-    bot.send_message(
-        chat_id,
-        text,
-        parse_mode="Markdown",
-        reply_markup=keyboard,
-    )
