@@ -1,4 +1,4 @@
-from .users import register_user_handlers
+from .user import register_user_handlers
 from .admin import register_admin_handlers
 from .owner import register_owner_handlers
 from .fallback import register_fallback_handlers
