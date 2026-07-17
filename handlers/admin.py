@@ -193,7 +193,7 @@ def register_admin_handlers():
         )
 
     # تعديل الأزرار وحذفها ونقلها وإدارة ملفاتها
-    @bot.callback_query_handler(func=lambda call: call.data == "adm_edit_list")
+    @bot.callback_query_handler(func=lambda call: call.data == "adm_edit_btn")
     def cb_edit_list(call):
         print(f"DEBUG: cb_edit_list triggered with data: {call.data}")
         user_id = call.from_user.id
