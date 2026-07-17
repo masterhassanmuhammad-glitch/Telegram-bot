@@ -109,23 +109,43 @@ def register_user_handlers():
         show_main_menu(call.message.chat.id, call.from_user.id)
         bot.answer_callback_query(call.id)
 
-    # دالة فتح المجلد وإرسال الملفات بعد تعديل اسم الجدول
+        # دالة فتح المجلد وإرسال الملفات (نسخة آمنة ومحمية من التعليق)
     @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
     def cb_open_folder(call):
+        # 1. الاستجابة الفورية للتليجرام لإنهاء عجلة التحميل ومنع تعليق الزر نهائياً مهما حدث
+        bot.answer_callback_query(call.id)
+        
         user_id = call.from_user.id
         parts = call.data.split("_")
         btn_id = int(parts[1])
-        btn_info = execute_query("SELECT name, message_text FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
-        if not btn_info: return
-        btn_name, msg_text = btn_info[0]
         
-        # التعديل التم هنا: تم تغيير اسم الجدول إلى files ليتوافق مع الحفظ في الـ admin
-        files_data = execute_query("SELECT file_id, file_type, NULL FROM files WHERE button_id = %s ORDER BY id ASC;", (btn_id,), fetch=True)
-        
-        perms = get_permissions(user_id)
-        send_files_and_recreate_menu(bot, call.message.chat.id, files_data, f"📂 {btn_name}\n\n{msg_text or ''}", make_sub_menu_markup(btn_id, perms["is_admin"]))
-        bot.answer_callback_query(call.id)
-
+        try:
+            # جلب معلومات الزر من قاعدة البيانات
+            btn_info = execute_query("SELECT name, message_text FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
+            if not btn_info: 
+                bot.send_message(call.message.chat.id, "⚠️ عذراً، هذا القسم غير موجود أو تم حذفه مسبقاً.")
+                return
+            btn_name, msg_text = btn_info[0]
+            
+            # 2. جلب الملفات بدون ORDER BY id لتفادي انهيار البوت إذا كان الجدول لا يحتوي على عمود id
+            files_data = execute_query("SELECT file_id, file_type, NULL FROM files WHERE button_id = %s;", (btn_id,), fetch=True)
+            
+            perms = get_permissions(user_id)
+            
+            # إرسال المحتوى وإعادة بناء القائمة للدانفيل أو المجلد الحالي
+            send_files_and_recreate_menu(
+                bot, 
+                call.message.chat.id, 
+                files_data, 
+                f"📂 {btn_name}\n\n{msg_text or ''}", 
+                make_sub_menu_markup(btn_id, perms["is_admin"])
+            )
+            
+        except Exception as e:
+            # في حال حدوث أي خطأ آخر سيوضح لك الـ Terminal السبب بالتفصيل دون أن يعلق البوت
+            print(f"❌ خطأ برمي داخل دالة cb_open_folder: {e}")
+            bot.send_message(call.message.chat.id, "❌ عذراً دكتور، حدث خطأ داخلي أثناء محاولة فتح هذا القسم.")
+            
     @bot.callback_query_handler(func=lambda call: call.data == "user_contact")
     def cb_user_contact(call):
         set_user_state(call.from_user.id, "WAITING_FEEDBACK_MSG")
