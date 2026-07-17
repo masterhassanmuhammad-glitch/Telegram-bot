@@ -1,9 +1,3 @@
-# أضف هذا الكود في أعلى ملف handlers/admin.py
-@bot.callback_query_handler(func=lambda call: True)
-def debug_all_callbacks(call):
-    print(f"DEBUG: تم النقر على زر، البيانات المستلمة هي: {call.data}")
-    # لا تضف أي شيء آخر، اترك الكود يمر للمعالجات التالية
-
 import telebot
 from config import bot, ADMIN_IDS, OWNER_ID
 from database import execute_query, execute_query_dict, set_user_state, get_user_state, clear_user_state
@@ -132,7 +126,7 @@ def register_admin_handlers():
             bot.send_message(user_id, f"❌ فشل إرسال الرد للمستخدم. الخطأ: {str(e)}")
         clear_user_state(user_id)
 
-    # شجرة وهيكلة الأزرار (إضافة زر جديد)
+    # شجرة وهيكلة الأزرار
     @bot.callback_query_handler(func=lambda call: call.data == "adm_add_btn")
     def cb_add_button_init(call):
         user_id = call.from_user.id
@@ -199,6 +193,7 @@ def register_admin_handlers():
     # تعديل الأزرار وحذفها ونقلها وإدارة ملفاتها
     @bot.callback_query_handler(func=lambda call: call.data == "adm_edit_list")
     def cb_edit_list(call):
+        print(f"DEBUG: cb_edit_list triggered with data: {call.data}")
         user_id = call.from_user.id
         perms = get_permissions(user_id)
         if not is_admin_or_alert(call, perms, 'can_settings'): return
@@ -218,6 +213,7 @@ def register_admin_handlers():
 
     @bot.callback_query_handler(func=lambda call: call.data == "adm_del_list")
     def cb_delete_list(call):
+        print(f"DEBUG: cb_delete_list triggered with data: {call.data}")
         user_id = call.from_user.id
         perms = get_permissions(user_id)
         if not is_admin_or_alert(call, perms, 'can_settings'): return
@@ -415,7 +411,4 @@ def register_admin_handlers():
             file_id = message.photo[-1].file_id
             file_type = 'photo'
         elif message.content_type == 'audio':
-            file_id = message.audio.file_id
-            file_type = 'audio'
-        elif message.content_type == 'video':
-            file
+          
