@@ -13,6 +13,22 @@ from keyboards import make_main_menu_markup, make_sub_menu_markup
 
 def register_user_handlers():
 
+    @bot.message_handler(
+    func=lambda message: True,
+    content_types=["text"]
+)
+def get_chat_id(message):
+    print(
+        "========== MESSAGE =========="
+    )
+    print("Type:", message.chat.type)
+    print("Title:", message.chat.title)
+    print("ID:", message.chat.id)
+    print(
+        "============================="
+    )
+
+    
     @bot.message_handler(func=lambda message: message.chat.type in ["group", "supergroup"])
     def debug_chat_id(message):
         print(f"DEBUG: Group Chat ID is {message.chat.id}")
