@@ -206,7 +206,7 @@ def send_files_and_recreate_menu(
 # مثال:
 # BATCH_GROUP_ID = -1001234567890
 
-BATCH_GROUP_ID = -100324412121
+BATCH_GROUP_ID = -1003244121210
 
 # رابط الدعوة للمجموعة
 GROUP_LINK = "https://t.me/+yB74ZDAEckM5NGE0"
