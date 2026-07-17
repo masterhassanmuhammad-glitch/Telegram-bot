@@ -33,7 +33,7 @@ def register_admin_handlers():
         )
         bot.answer_callback_query(call.id)
 
-        # ==========================================
+    # ==========================================
     # البث الجماعي للطلاب (مع ميزة الإلغاء)
     # ==========================================
     @bot.callback_query_handler(func=lambda call: call.data == "admin_broadcast")
@@ -96,7 +96,6 @@ def register_admin_handlers():
         clear_user_state(user_id)
         bot.send_message(user_id, f"✅ تم إرسال الإعلان الجماعي بنجاح إلى {success_count} مستخدم.", reply_markup=make_main_menu_markup(perms, user_id))
         
-
     # عرض عدد المستخدمين
     @bot.callback_query_handler(func=lambda call: call.data == "admin_count_users")
     def cb_count_users(call):
@@ -113,7 +112,6 @@ def register_admin_handlers():
         perms = get_permissions(user_id)
         if not is_admin_or_alert(call, perms, 'can_feedback'): return
         
-        # إزالة LIMIT 5 لجلب كافة الرسائل المعلقة
         feedbacks = execute_query_dict("SELECT id, user_id, username, message_text FROM feedback WHERE status = 'pending' ORDER BY id DESC;")
         
         if not feedbacks:
@@ -149,11 +147,9 @@ def register_admin_handlers():
         if not is_admin_or_alert(call, perms, 'can_feedback'): return
         
         fb_id = int(call.data.split("_")[1])
-        # تغيير الحالة إلى 'deleted' بدلاً من الحذف الفيزيائي للاحتفاظ بالسجل
         execute_query("UPDATE feedback SET status = 'deleted' WHERE id = %s;", (fb_id,), commit=True)
         
         bot.answer_callback_query(call.id, "✅ تم حذف الرسالة بنجاح.", show_alert=True)
-        # حذف الرسالة الأصلية من الشات
         bot.delete_message(chat_id=user_id, message_id=call.message.message_id)
         
     @bot.callback_query_handler(func=lambda call: call.data.startswith("replyfb_"))
@@ -407,7 +403,6 @@ def register_admin_handlers():
             reply_markup=make_admin_move_button_markup(btn_id)
         )
         bot.answer_callback_query(call.id)
-
     @bot.callback_query_handler(func=lambda call: call.data.startswith("exec_move_"))
     def cb_execute_move(call):
         user_id = call.from_user.id
@@ -439,16 +434,26 @@ def register_admin_handlers():
         )
         bot.answer_callback_query(call.id)
 
+    # ==========================================
+    # ميزة الرفع المتعدد للملفات (تحديث تفاعلي)
+    # ==========================================
     @bot.callback_query_handler(func=lambda call: call.data.startswith("addfile_"))
     def cb_add_file_init(call):
         user_id = call.from_user.id
         perms = get_permissions(user_id)
         if not is_admin_or_alert(call, perms, 'can_settings'): return
         btn_id = int(call.data.split("_")[1])
+        
         set_user_state(user_id, "WAITING_ADD_FILE", {"button_id": btn_id})
+        
+        # كيبورد يحتوي على زر الحفظ والإنهاء
+        save_markup = telebot.types.InlineKeyboardMarkup()
+        save_markup.add(telebot.types.InlineKeyboardButton(text="💾 حفظ وإنهاء الرفع", callback_data="save_uploaded_files"))
+        
         bot.edit_message_text(
             chat_id=user_id, message_id=call.message.message_id,
-            text="📤 أرسل الآن الملف الذي تريد ربطه بالزر (PDF، صورة، فيديو، إلخ):"
+            text="📤 أرسل الآن الملفات التي تريد ربطه بالزر (يمكنك إرسال أي عدد من الملفات متتالية).\n\n📌 عند الانتهاء تماماً، اضغط على زر الحفظ بالأسفل 👇:",
+            reply_markup=save_markup
         )
         bot.answer_callback_query(call.id)
 
@@ -482,8 +487,35 @@ def register_admin_handlers():
             
         if file_id:
             execute_query("INSERT INTO files (button_id, file_id, file_type) VALUES (%s, %s, %s);", (btn_id, file_id, file_type), commit=True)
-            clear_user_state(user_id)
-            bot.send_message(user_id, "✅ تم إضافة الملف بنجاح للزر!", reply_markup=make_admin_edit_options_markup(btn_id))
+            
+            save_markup = telebot.types.InlineKeyboardMarkup()
+            save_markup.add(telebot.types.InlineKeyboardButton(text="💾 حفظ وإنهاء الرفع", callback_data="save_uploaded_files"))
+            
+            # نرسل إشعار نجاح دون تصفير الجلسة للسماح بملف آخر
+            bot.send_message(
+                user_id, 
+                "➕ تم استقبال الملف بنجاح!\n\nيمكنك الاستمرار بإرسال ملف آخر فوراً، أو اضغط على (حفظ وإنهاء الرفع) بالأسفل عند الاكتفاء 👇.",
+                reply_markup=save_markup
+            )
         else:
             bot.send_message(user_id, "❌ نوع الملف غير مدعوم أو فشل الرفع.")
-          
+
+    # معالج إنهاء جلسة الرفع وحفظ الملفات بالكامل
+    @bot.callback_query_handler(func=lambda call: call.data == "save_uploaded_files")
+    def cb_save_uploaded_files(call):
+        user_id = call.from_user.id
+        state, data = get_user_state(user_id)
+        
+        if state != "WAITING_ADD_FILE":
+            bot.answer_callback_query(call.id, "⚠️ انتهت جلسة الرفع بالفعل أو تم الحفظ مسبقاً.", show_alert=True)
+            return
+            
+        btn_id = data.get('button_id')
+        clear_user_state(user_id)
+        
+        bot.answer_callback_query(call.id, "💾 تم حفظ وإدراج جميع الملفات بنجاح!", show_alert=True)
+        bot.send_message(
+            user_id, 
+            "✅ تم إنهاء الجلسة وتحديث محتويات المجلد بنجاح. يمكنك المراجعة الآن:",
+            reply_markup=make_admin_edit_options_markup(btn_id)
+        )
