@@ -411,4 +411,19 @@ def register_admin_handlers():
             file_id = message.photo[-1].file_id
             file_type = 'photo'
         elif message.content_type == 'audio':
+            file_id = message.audio.file_id
+            file_type = 'audio'
+        elif message.content_type == 'video':
+            file_id = message.video.file_id
+            file_type = 'video'
+        elif message.content_type == 'voice':
+            file_id = message.voice.file_id
+            file_type = 'voice'
+            
+        if file_id:
+            execute_query("INSERT INTO files (button_id, file_id, file_type) VALUES (%s, %s, %s);", (btn_id, file_id, file_type), commit=True)
+            clear_user_state(user_id)
+            bot.send_message(user_id, "✅ تم إضافة الملف بنجاح للزر!", reply_markup=make_admin_edit_options_markup(btn_id))
+        else:
+            bot.send_message(user_id, "❌ نوع الملف غير مدعوم أو فشل الرفع.")
           
