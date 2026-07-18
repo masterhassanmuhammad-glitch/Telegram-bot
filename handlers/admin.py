@@ -417,7 +417,7 @@ def register_admin_handlers():
         clear_user_state(user_id)
         bot.send_message(user_id, "✅ تم تعديل اسم الزر بنجاح!", reply_markup=get_edit_markup(btn_id))
 
-        @bot.callback_query_handler(func=lambda call: call.data.startswith("editopt_msg_"))
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("editopt_msg_"))
     def cb_edit_msg_init(call):
         user_id = call.from_user.id
         perms = get_permissions(user_id)
