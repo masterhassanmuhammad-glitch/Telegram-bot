@@ -139,7 +139,7 @@ def register_user_handlers():
         execute_query("UPDATE users SET phone_number = %s WHERE user_id = %s;", (phone_number, user_id), commit=True)
         clear_user_state(user_id)
         
-        bot.send_message(message.chat.id, "✅ تم تسجيل رقمك بنجاح. شكراً لك!", reply_markup=types.ReplyKeyboardRemove())
+        bot.send_message(message.chat.id, "✅ تم تسجيل رقمك بنجاح. شكراً لك!", reply_markup=types.KeyboardRemove())
         show_main_menu(message.chat.id, user_id)
 
     # 4. زر التحقق من العضوية
@@ -171,43 +171,57 @@ def register_user_handlers():
         show_main_menu(call.message.chat.id, call.from_user.id)
         bot.answer_callback_query(call.id)
 
+    # 🛑 تم تصحيح محاذاة الأسطر هنا لتكون بالكامل داخل الـ try
     @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
     def cb_open_folder(call):
-    # الاستجابة الفورية للتليجرام لإنهاء عجلة التحميل ومنع تعليق الزر
         bot.answer_callback_query(call.id)
-    
         user_id = call.from_user.id
         parts = call.data.split("_")
         btn_id = int(parts[1])
     
         try:
-        # 1. جلب معلومات المجلد/الزر من قاعدة البيانات
+            # 1. جلب معلومات المجلد/الزر من قاعدة البيانات
             btn_info = execute_query("SELECT name, message_text FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
-        if not btn_info: 
-            bot.send_message(call.message.chat.id, "⚠️ عذراً، هذا القسم غير موجود أو تم حذفه مسبقاً.")
-            return
-        btn_name, msg_text = btn_info[0]
-        
-        perms = get_permissions(user_id)
-        
-        # 2. تحديث نص الرسالة الحالية وعرض القائمة والأزرار الفرعية للطالب (المنيو الشجري)
-        bot.edit_message_text(
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            text=f"📂 {btn_name}\n\n{msg_text or ''}",
-            reply_markup=make_sub_menu_markup(btn_id, perms["is_admin"])
-        )
-        
-        # 3. استدعاء الدالة المساعدة لتبدأ تلقائياً بإرسال أول 10 ملفات فقط (الصفحة رقم 1)
-        send_button_files_page(call.message.chat.id, btn_id, page=1)
-        
-    except Exception as e:
-        # طباعة الخطأ في السيرفر وإعلامك به في التليجرام إذا حدثت أي مشكلة
-        print(f"❌ خطأ برمجي داخل دالة cb_open_folder: {e}")
-        bot.send_message(call.message.chat.id, f"❌ حدث خطأ داخلي في الكود:\n\n`{str(e)}`")
-        
-        
+            if not btn_info: 
+                bot.send_message(call.message.chat.id, "⚠️ عذراً، هذا القسم غير موجود أو تم حذفه مسبقاً.")
+                return
+            btn_name, msg_text = btn_info[0]
             
+            perms = get_permissions(user_id)
+            
+            # 2. تحديث نص الرسالة الحالية وعرض القائمة والأزرار الفرعية للطالب (المنيو الشجري)
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=f"📂 {btn_name}\n\n{msg_text or ''}",
+                reply_markup=make_sub_menu_markup(btn_id, perms["is_admin"])
+            )
+            
+            # 3. استدعاء الدالة المساعدة لتبدأ تلقائياً بإرسال أول 10 ملفات فقط (الصفحة رقم 1)
+            send_button_files_page(call.message.chat.id, btn_id, page=1)
+            
+        except Exception as e:
+            print(f"❌ خطأ برمجي داخل دالة cb_open_folder: {e}")
+            bot.send_message(call.message.chat.id, f"❌ حدث خطأ داخلي في الكود:\n\n`{str(e)}`")
+
+    # 🔥 [إضافة جديدة]: معالج أزرار التنقل (التالي / السابق) المفقود
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("files_"))
+    def cb_files_pagination(call):
+        bot.answer_callback_query(call.id)
+        user_id = call.from_user.id
+        parts = call.data.split("_")
+        btn_id = int(parts[1])
+        page = int(parts[2])
+        
+        # حذف رسالة التحكم بالصفحة السابقة لتبقى المحادثة نظيفة
+        try:
+            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
+        except Exception:
+            pass
+            
+        # استدعاء الصفحة الجديدة المطلوبة من الملفات
+        send_button_files_page(call.message.chat.id, btn_id, page=page)
+        
     @bot.callback_query_handler(func=lambda call: call.data == "user_contact")
     def cb_user_contact(call):
         set_user_state(call.from_user.id, "WAITING_FEEDBACK_MSG")
