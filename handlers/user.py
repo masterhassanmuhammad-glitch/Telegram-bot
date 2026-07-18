@@ -77,111 +77,118 @@ def send_button_files_page(chat_id, button_id, page=1):
 
 def register_user_handlers():
 
-    # 1. أمر البدء (المدخل الرئيسي)
-    @bot.message_handler(commands=['start'])
-    def cmd_start(message):
-        chat_id = message.chat.id
-        user_id = message.from_user.id
-        username = message.from_user.username or "NoUsername"
-        first_name = message.from_user.first_name or ""
-        last_name = message.from_user.last_name or ""
+# 1. أمر البدء (المدخل الرئيسي)
+@bot.message_handler(commands=['start'])
+def cmd_start(message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    username = message.from_user.username or "NoUsername"
+    first_name = message.from_user.first_name or ""
+    last_name = message.from_user.last_name or ""
 
-        execute_query(
-            """
-            INSERT INTO users (user_id, username, first_name, last_name)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT (user_id)
-            DO UPDATE SET 
-                username = EXCLUDED.username,
-                first_name = EXCLUDED.first_name,
-                last_name = EXCLUDED.last_name;
-            """,
-            (user_id, username, first_name, last_name),
-            commit=True
-        )
+    execute_query(
+        """
+        INSERT INTO users (user_id, username, first_name, last_name)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (user_id)
+        DO UPDATE SET 
+            username = EXCLUDED.username,
+            first_name = EXCLUDED.first_name,
+            last_name = EXCLUDED.last_name;
+        """,
+        (user_id, username, first_name, last_name),
+        commit=True
+    )
 
-        clear_user_state(user_id)
+    clear_user_state(user_id)
 
-        if not is_user_in_batch(bot, user_id):
-            send_join_request_menu(bot, chat_id)
-            return
+    # الفلترة الأولية لمنع غير الأعضاء من المرور لخطوة طلب الهاتف
+    if not is_user_in_batch(bot, user_id):
+        send_join_request_menu(bot, chat_id)
+        return
 
+    res = execute_query("SELECT phone_number FROM users WHERE user_id = %s;", (user_id,), fetch=True)
+    has_phone = bool(res and res[0][0])
+
+    if not has_phone:
+        ask_for_phone(chat_id, user_id)
+        return
+
+    show_main_menu(chat_id, user_id)
+
+# 2. وظيفة طلب رقم الهاتف
+def ask_for_phone(chat_id, user_id):
+    set_user_state(user_id, "WAITING_PHONE")
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    markup.add(types.KeyboardButton("📱 مشاركة رقم الهاتف", request_contact=True))
+    
+    bot.send_message(
+        chat_id,
+        "⚠️ أهلاً بك يا دكتور! لاستكمال استخدام البوت، يرجى مشاركة رقم هاتفك بالضغط على الزر أدناه 👇",
+        reply_markup=markup
+    )
+
+# 3. معالجة إرسال الرقم
+@bot.message_handler(func=check_state("WAITING_PHONE"), content_types=['contact'])
+def process_phone_number(message):
+    user_id = message.from_user.id
+    if message.contact.user_id != user_id:
+        bot.reply_to(message, "❌ يرجى مشاركة رقم هاتفك الشخصي فقط.")
+        return
+        
+    phone_number = message.contact.phone_number
+    execute_query("UPDATE users SET phone_number = %s WHERE user_id = %s;", (phone_number, user_id), commit=True)
+    clear_user_state(user_id)
+    
+    bot.send_message(message.chat.id, "✅ تم تسجيل رقمك بنجاح. شكراً لك!", reply_markup=types.ReplyKeyboardRemove())
+    show_main_menu(message.chat.id, user_id)
+
+# 4. زر التحقق من العضوية
+@bot.callback_query_handler(func=lambda call: call.data == "check_membership")
+def handle_check_membership(call):
+    user_id = call.from_user.id
+    if is_user_in_batch(bot, user_id):
+        bot.answer_callback_query(call.id, "✅ تم التحقق من عضويتك!", show_alert=True)
+        bot.delete_message(call.message.chat.id, call.message.message_id)
         res = execute_query("SELECT phone_number FROM users WHERE user_id = %s;", (user_id,), fetch=True)
-        has_phone = bool(res and res[0][0])
-
-        if not has_phone:
-            ask_for_phone(chat_id, user_id)
-            return
-
-        show_main_menu(chat_id, user_id)
-
-    # 2. وظيفة طلب رقم الهاتف
-    def ask_for_phone(chat_id, user_id):
-        set_user_state(user_id, "WAITING_PHONE")
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("📱 مشاركة رقم الهاتف", request_contact=True))
-        
-        bot.send_message(
-            chat_id,
-            "⚠️ أهلاً بك يا دكتور! لاستكمال استخدام البوت، يرجى مشاركة رقم هاتفك بالضغط على الزر أدناه 👇",
-            reply_markup=markup
-        )
-
-    # 3. معالجة إرسال الرقم
-    @bot.message_handler(func=check_state("WAITING_PHONE"), content_types=['contact'])
-    def process_phone_number(message):
-        user_id = message.from_user.id
-        if message.contact.user_id != user_id:
-            bot.reply_to(message, "❌ يرجى مشاركة رقم هاتفك الشخصي فقط.")
-            return
-            
-        phone_number = message.contact.phone_number
-        execute_query("UPDATE users SET phone_number = %s WHERE user_id = %s;", (phone_number, user_id), commit=True)
-        clear_user_state(user_id)
-        
-        bot.send_message(message.chat.id, "✅ تم تسجيل رقمك بنجاح. شكراً لك!", reply_markup=types.ReplyKeyboardRemove())
-        show_main_menu(message.chat.id, user_id)
-
-    # 4. زر التحقق من العضوية
-    @bot.callback_query_handler(func=lambda call: call.data == "check_membership")
-    def handle_check_membership(call):
-        user_id = call.from_user.id
-        if is_user_in_batch(bot, user_id):
-            bot.answer_callback_query(call.id, "✅ تم التحقق من عضويتك!", show_alert=True)
-            bot.delete_message(call.message.chat.id, call.message.message_id)
-            res = execute_query("SELECT phone_number FROM users WHERE user_id = %s;", (user_id,), fetch=True)
-            if not (res and res[0][0]):
-                ask_for_phone(call.message.chat.id, user_id)
-            else:
-                show_main_menu(call.message.chat.id, user_id)
+        if not (res and res[0][0]):
+            ask_for_phone(call.message.chat.id, user_id)
         else:
-            bot.answer_callback_query(call.id, "عذراً، أنت لست عضواً في كلية الطب من الدفعتين 35&36", show_alert=True)
+            show_main_menu(call.message.chat.id, user_id)
+    else:
+        bot.answer_callback_query(call.id, "عذراً، أنت لست عضواً في كلية الطب من الدفعتين 35&36", show_alert=True)
 
-    # 5. عرض القائمة الرئيسية
-    def show_main_menu(chat_id, user_id):
-        perms = get_permissions(user_id)
-        text = "👋 أهلاً بك في البوت الطبي التعليمي.\n\nالرجاء استخدام الأزرار أدناه للتنقل وتصفح الملفات الطبية 👇"
-        sent_menu = bot.send_message(chat_id, text, reply_markup=make_main_menu_markup(perms, user_id))
-        active_menus[chat_id] = sent_menu.message_id
+# 5. عرض القائمة الرئيسية (الحارس المركزي للمنيو)
+def show_main_menu(chat_id, user_id):
+    # 🔒 صمام أمان مركزي: إذا استطاع أي مستخدم الوصول لهذه الدالة بطريقة ملتوية وهو ليس في الدفعة، سيتم طرده فوراً لشاشة الاشتراك
+    if not is_user_in_batch(bot, user_id):
+        send_join_request_menu(bot, chat_id)
+        return
 
-    # 6. العودة للمنيو الرئيسي تنظف كل شيء أولاً
-    @bot.callback_query_handler(func=lambda call: call.data == "main_menu")
-    def cb_main_menu(call):
-        chat_id = call.message.chat.id
-        if chat_id in active_pagination:
-            try:
-                bot.delete_message(chat_id, active_pagination[chat_id])
-                active_pagination.pop(chat_id, None)
-            except Exception: pass
-                
-        if chat_id in active_menus:
-            try:
-                bot.delete_message(chat_id, active_menus[chat_id])
-                active_menus.pop(chat_id, None)
-            except Exception: pass
-                
-        show_main_menu(chat_id, call.from_user.id)
-        bot.answer_callback_query(call.id)
+    perms = get_permissions(user_id)
+    text = "👋 أهلاً بك في البوت الطبي التعليمي.\n\nالرجاء استخدام الأزرار أدناه للتنقل وتصفح الملفات الطبية 👇"
+    sent_menu = bot.send_message(chat_id, text, reply_markup=make_main_menu_markup(perms, user_id))
+    active_menus[chat_id] = sent_menu.message_id
+
+# 6. العودة للمنيو الرئيسي (أصبحت آمنة تماماً الآن بفضل الحماية المركزية)
+@bot.callback_query_handler(func=lambda call: call.data == "main_menu")
+def cb_main_menu(call):
+    chat_id = call.message.chat.id
+    if chat_id in active_pagination:
+        try:
+            bot.delete_message(chat_id, active_pagination[chat_id])
+            active_pagination.pop(chat_id, None)
+        except Exception: pass
+            
+    if chat_id in active_menus:
+        try:
+            bot.delete_message(chat_id, active_menus[chat_id])
+            active_menus.pop(chat_id, None)
+        except Exception: pass
+            
+    show_main_menu(chat_id, call.from_user.id)
+    bot.answer_callback_query(call.id)
+    
 
     # 📁 دالة فتح المجلد عند التصفح لأول مرة (ترسل الملفات + المنيو بالأسفل)
     @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
