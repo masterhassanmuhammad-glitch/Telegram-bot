@@ -13,7 +13,7 @@ if __name__ == "__main__":
     # 🛠️ تعيين قائمة الأوامر (زر القائمة /start أسفل الشاشة)
     print("📋 جاري تعيين زر تشغيل البوت في القائمة...")
     config.bot.set_my_commands([
-        types.BotCommand("start", "اضغط لتشغيل البوت")
+        types.BotCommand("start"اضغط لعرض القائمة 🎓")
     ])
     
     # إلغاء أي Webhook قديم عالق
