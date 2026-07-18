@@ -171,42 +171,41 @@ def register_user_handlers():
         show_main_menu(call.message.chat.id, call.from_user.id)
         bot.answer_callback_query(call.id)
 
-    # دالة فتح المجلد وإرسال الملفات (النسخة النظيفة والمصححة بدون تكرار)
     @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
     def cb_open_folder(call):
-        # 1. الاستجابة الفورية للتليجرام لإنهاء عجلة التحميل ومنع تعليق الزر
+    # الاستجابة الفورية للتليجرام لإنهاء عجلة التحميل ومنع تعليق الزر
         bot.answer_callback_query(call.id)
-        
+    
         user_id = call.from_user.id
         parts = call.data.split("_")
         btn_id = int(parts[1])
-        
+    
         try:
-            # 2. جلب معلومات المجلد/الزر من قاعدة البيانات
+        # 1. جلب معلومات المجلد/الزر من قاعدة البيانات
             btn_info = execute_query("SELECT name, message_text FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
-            if not btn_info: 
-                bot.send_message(call.message.chat.id, "⚠️ عذراً، هذا القسم غير موجود أو تم حذفه مسبقاً.")
-                return
-            btn_name, msg_text = btn_info[0]
-            
-            # 3. جلب الملفات المربوطة بالزر من جدول button_files الصحيح مرتبة بالتسلسل
-            files_data = execute_query("SELECT file_id, file_type, NULL FROM button_files WHERE button_id = %s ORDER BY id ASC;", (btn_id,), fetch=True)
-            
-            perms = get_permissions(user_id)
-            
-            # 4. إرسال الملفات وإعادة بناء القائمة للطالب
-            send_files_and_recreate_menu(
-                bot, 
-                call.message.chat.id, 
-                files_data, 
-                f"📂 {btn_name}\n\n{msg_text or ''}", 
-                make_sub_menu_markup(btn_id, perms["is_admin"])
-            )
-            
-        except Exception as e:
-            # طباعة الخطأ في السيرفر وإعلامك به في التليجرام إذا حدثت أي مشكلة
-            print(f"❌ خطأ برمجي داخل دالة cb_open_folder: {e}")
-            bot.send_message(call.message.chat.id, f"❌ حدث خطأ داخلي في الكود:\n\n`{str(e)}`")
+        if not btn_info: 
+            bot.send_message(call.message.chat.id, "⚠️ عذراً، هذا القسم غير موجود أو تم حذفه مسبقاً.")
+            return
+        btn_name, msg_text = btn_info[0]
+        
+        perms = get_permissions(user_id)
+        
+        # 2. تحديث نص الرسالة الحالية وعرض القائمة والأزرار الفرعية للطالب (المنيو الشجري)
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=f"📂 {btn_name}\n\n{msg_text or ''}",
+            reply_markup=make_sub_menu_markup(btn_id, perms["is_admin"])
+        )
+        
+        # 3. استدعاء الدالة المساعدة لتبدأ تلقائياً بإرسال أول 10 ملفات فقط (الصفحة رقم 1)
+        send_button_files_page(call.message.chat.id, btn_id, page=1)
+        
+    except Exception as e:
+        # طباعة الخطأ في السيرفر وإعلامك به في التليجرام إذا حدثت أي مشكلة
+        print(f"❌ خطأ برمجي داخل دالة cb_open_folder: {e}")
+        bot.send_message(call.message.chat.id, f"❌ حدث خطأ داخلي في الكود:\n\n`{str(e)}`")
+        
         
             
     @bot.callback_query_handler(func=lambda call: call.data == "user_contact")
