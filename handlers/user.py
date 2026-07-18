@@ -1,3 +1,4 @@
+from types import InlineKeyboardMarkup, InlineKeyboardButton
 from telebot import types
 from .helpers import (
     is_user_in_batch,
@@ -13,7 +14,7 @@ from keyboards import make_main_menu_markup, make_sub_menu_markup
 PAGE_SIZE = 10  # عدد الملفات في كل صفحة
 
 
-# 📑 الدالة المساعدة لإرسال الملفات المحدثة باليوزرنيم ودمج أزرار التحكم
+# 📑 الدالة المساعدة لإرسال الملفات ودمج أزرار التحكم في رسالة موحدة بالأسفل
 def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, base_text=""):
     offset = (page - 1) * PAGE_SIZE
     
@@ -33,19 +34,14 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
         (button_id, PAGE_SIZE, offset), fetch=True
     )
     
-    # يوزرنيم البوت الثابت كـ شرح وحيد للملفات الخارجة
-    bot_username = "@Sudanmedicinebot"
-    
-    # 3. إرسال الملفات للمستخدم مع الـ caption
+    # 3. إرسال الملفات للمستخدم أولاً مع إضافة اليوزرنيم
     for file_id, file_type in files:
         try:
-            f_type = str(file_type).lower()
-            if f_type == 'document': bot.send_document(chat_id, file_id, caption=bot_username)
-            elif f_type == 'photo': bot.send_photo(chat_id, file_id, caption=bot_username)
-            elif f_type == 'audio': bot.send_audio(chat_id, file_id, caption=bot_username)
-            elif f_type == 'video': bot.send_video(chat_id, file_id, caption=bot_username)
-            elif f_type == 'voice': bot.send_voice(chat_id, file_id, caption=bot_username)
-            else: bot.send_document(chat_id, file_id, caption=bot_username) # احتياطي
+            if file_type == 'document': bot.send_document(chat_id, file_id, caption="@Sudanmedicinebot")
+            elif file_type == 'photo': bot.send_photo(chat_id, file_id, caption="@Sudanmedicinebot")
+            elif file_type == 'audio': bot.send_audio(chat_id, file_id, caption="@Sudanmedicinebot")
+            elif file_type == 'video': bot.send_video(chat_id, file_id, caption="@Sudanmedicinebot")
+            elif file_type == 'voice': bot.send_voice(chat_id, file_id, caption="@Sudanmedicinebot")
         except Exception as e:
             print(f"Error sending file {file_id}: {str(e)}")
             
@@ -66,11 +62,16 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
 # 🛠️ الدالة الرئيسية لتسجيل كل معالجات المستخدم (User Handlers)
 def register_user_handlers():
 
-    # 1. أمر البدء (المدخل الرئيسي المحدث)
+    # 1. أمر البدء (تم إضافة الحذف الفوري لرسالة الـ /start هنا)
     @bot.message_handler(commands=['start'])
     def cmd_start(message):
         chat_id = message.chat.id
         user_id = message.from_user.id
+        
+        # حذف رسالة الـ /start التي أرسلها المستخدم فوراً
+        try: bot.delete_message(chat_id, message.message_id)
+        except Exception: pass
+
         username = message.from_user.username or "NoUsername"
         first_name = message.from_user.first_name or ""
         last_name = message.from_user.last_name or ""
@@ -357,4 +358,4 @@ def register_user_handlers():
         bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
         
         show_main_menu(message.chat.id, user_id)
-            
+                
