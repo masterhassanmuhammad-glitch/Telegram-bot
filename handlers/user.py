@@ -14,6 +14,7 @@ from keyboards import make_main_menu_markup, make_sub_menu_markup
 
 PAGE_SIZE = 10  # عدد الملفات في كل صفحة
 
+# 📑 الدالة المساعدة لتقسيم الملفات إلى صفحات
 def send_button_files_page(chat_id, button_id, page=1):
     offset = (page - 1) * PAGE_SIZE
     
@@ -130,16 +131,26 @@ def register_user_handlers():
             reply_markup=markup
         )
 
-    # 3. معالجة إرسال الرقم
+    # 3. معالجة إرسال الرقم (النسخة المؤمنة والمصححة)
     @bot.message_handler(func=check_state("WAITING_PHONE"), content_types=['contact'])
     def process_phone_number(message):
         user_id = message.from_user.id
+        
+        # 🛡️ التحقق من أن الرقم المرسل يخص الطالب نفسه لمنع انتحال الهويات
+        if message.contact.user_id != user_id:
+            bot.reply_to(
+                message,
+                "❌ يرجى مشاركة رقم هاتفك الشخصي فقط."
+            )
+            return
+            
         phone_number = message.contact.phone_number
         
         execute_query("UPDATE users SET phone_number = %s WHERE user_id = %s;", (phone_number, user_id), commit=True)
         clear_user_state(user_id)
         
-        bot.send_message(message.chat.id, "✅ تم تسجيل رقمك بنجاح. شكراً لك!", reply_markup=types.KeyboardRemove())
+        # ✅ تم التعديل هنا إلى ReplyKeyboardRemove لإزالة أزرار مشاركة الرقم بدون مشاكل
+        bot.send_message(message.chat.id, "✅ تم تسجيل رقمك بنجاح. شكراً لك!", reply_markup=types.ReplyKeyboardRemove())
         show_main_menu(message.chat.id, user_id)
 
     # 4. زر التحقق من العضوية
@@ -171,7 +182,7 @@ def register_user_handlers():
         show_main_menu(call.message.chat.id, call.from_user.id)
         bot.answer_callback_query(call.id)
 
-    # 🛑 تم تصحيح محاذاة الأسطر هنا لتكون بالكامل داخل الـ try
+    # 📁 دالة فتح المجلد المعدلة والمصححة بالكامل
     @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
     def cb_open_folder(call):
         bot.answer_callback_query(call.id)
@@ -204,7 +215,7 @@ def register_user_handlers():
             print(f"❌ خطأ برمجي داخل دالة cb_open_folder: {e}")
             bot.send_message(call.message.chat.id, f"❌ حدث خطأ داخلي في الكود:\n\n`{str(e)}`")
 
-    # 🔥 [إضافة جديدة]: معالج أزرار التنقل (التالي / السابق) المفقود
+    # 🔄 معالج أزرار التنقل (التالي / السابق) لإدارة الصفحات
     @bot.callback_query_handler(func=lambda call: call.data.startswith("files_"))
     def cb_files_pagination(call):
         bot.answer_callback_query(call.id)
@@ -213,7 +224,7 @@ def register_user_handlers():
         btn_id = int(parts[1])
         page = int(parts[2])
         
-        # حذف رسالة التحكم بالصفحة السابقة لتبقى المحادثة نظيفة
+        # حذف رسالة التحكم بالصفحة السابقة لتبقى المحادثة نظيفة ومنظمة
         try:
             bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
         except Exception:
@@ -269,4 +280,4 @@ def register_user_handlers():
         clear_user_state(user_id)
         bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
         show_main_menu(message.chat.id, user_id)
-        
+    
