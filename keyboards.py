@@ -159,11 +159,33 @@ def make_owner_manage_admins_markup():
     return markup
 
 
+# 🛠️ الدالة المحدثة كلياً لعرض الاسم الفعلي ورقم الهاتف عند الإزالة
 def make_remove_admin_list_markup():
     markup = InlineKeyboardMarkup(row_width=1)
-    admins = execute_query("SELECT admin_id FROM admins;", fetch=True)
-    for (adm_id,) in admins:
-        markup.add(InlineKeyboardButton(text=f"❌ إزالة المشرف ({adm_id})", callback_data=f"exec_remove_admin_{adm_id}"))
+    
+    # جلب معرف المشرف والاسم ورقم الهاتف عبر LEFT JOIN مع جدول الـ users
+    admins = execute_query("""
+        SELECT a.admin_id, u.first_name, u.last_name, u.phone_number 
+        FROM admins a
+        LEFT JOIN users u ON a.admin_id = u.user_id;
+    """, fetch=True)
+    
+    if admins:
+        for row in admins:
+            adm_id, first_name, last_name, phone = row
+            
+            # التحقق من وجود الاسم الأول للمستخدم لبناء الاسم الكامل
+            if first_name:
+                full_name = f"{first_name} {last_name or ''}".strip()
+            else:
+                full_name = f"المشرف ({adm_id})"
+            
+            # دمج رقم الهاتف في نص الزر إن وجد بصيغة أنيقة
+            phone_suffix = f" 📱 {phone}" if phone else " (بلا هاتف)"
+            button_text = f"❌ إزالة {full_name}{phone_suffix}"
+            
+            markup.add(InlineKeyboardButton(text=button_text, callback_data=f"exec_remove_admin_{adm_id}"))
+            
     markup.add(InlineKeyboardButton(text="🔙 عودة", callback_data="owner_manage_admins"))
     return markup
 
@@ -186,4 +208,4 @@ def make_permissions_markup(perms_dict, new_admin_id):
         InlineKeyboardButton(text="🔙 إلغاء والعودة", callback_data="owner_manage_admins")
     )
     return markup
-                                    
+            
