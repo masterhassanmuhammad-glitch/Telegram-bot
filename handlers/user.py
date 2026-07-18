@@ -1,4 +1,3 @@
-from types import InlineKeyboardMarkup, InlineKeyboardButton
 from telebot import types
 from .helpers import (
     is_user_in_batch,
@@ -62,7 +61,7 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
 # 🛠️ الدالة الرئيسية لتسجيل كل معالجات المستخدم (User Handlers)
 def register_user_handlers():
 
-    # 1. أمر البدء (تم إضافة الحذف الفوري لرسالة الـ /start هنا)
+    # 1. أمر البدء (مع الحذف الفوري لرسالة الـ /start)
     @bot.message_handler(commands=['start'])
     def cmd_start(message):
         chat_id = message.chat.id
@@ -358,4 +357,4 @@ def register_user_handlers():
         bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
         
         show_main_menu(message.chat.id, user_id)
-                
+        
