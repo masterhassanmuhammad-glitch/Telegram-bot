@@ -12,6 +12,68 @@ from config import bot, OWNER_ID, ADMIN_IDS
 from database import execute_query, set_user_state, clear_user_state
 from keyboards import make_main_menu_markup, make_sub_menu_markup
 
+PAGE_SIZE = 10  # عدد الملفات في كل صفحة
+
+def send_button_files_page(chat_id, button_id, page=1):
+    offset = (page - 1) * PAGE_SIZE
+    
+    # 1. جلب إجمالي عدد الملفات المرتبطة بهذا الزر
+    count_res = execute_query("SELECT COUNT(*) FROM button_files WHERE button_id = %s;", (button_id,), fetch=True)
+    total_files = count_res[0][0] if count_res else 0
+    
+    # إذا لم تكن هناك ملفات، نخرج فوراً دون إرسال أي شيء
+    if total_files == 0:
+        return
+        
+    # حساب إجمالي عدد الصفحات
+    total_pages = (total_files + PAGE_SIZE - 1) // PAGE_SIZE
+    
+    # 2. جلب ملفات الصفحة الحالية فقط باستخدام LIMIT و OFFSET
+    files = execute_query(
+        "SELECT file_id, file_type FROM button_files WHERE button_id = %s ORDER BY id ASC LIMIT %s OFFSET %s;",
+        (button_id, PAGE_SIZE, offset), fetch=True
+    )
+    
+    # 3. إرسال الملفات العشرة الحالية للطالب
+    for file_id, file_type in files:
+        try:
+            if file_type == 'document':
+                bot.send_document(chat_id, file_id)
+            elif file_type == 'photo':
+                bot.send_photo(chat_id, file_id)
+            elif file_type == 'audio':
+                bot.send_audio(chat_id, file_id)
+            elif file_type == 'video':
+                bot.send_video(chat_id, file_id)
+            elif file_type == 'voice':
+                bot.send_voice(chat_id, file_id)
+        except Exception as e:
+            print(f"Error sending file {file_id}: {str(e)}")
+            
+    # 4. بناء كيبورد التنقل بين الصفحات (التالي والسابق)
+    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+    markup = InlineKeyboardMarkup()
+    
+    nav_buttons = []
+    if page > 1:
+        nav_buttons.append(InlineKeyboardButton(text="◀️ السابق", callback_data=f"files_{button_id}_{page-1}"))
+    if page < total_pages:
+        nav_buttons.append(InlineKeyboardButton(text="التالي ▶️", callback_data=f"files_{button_id}_{page+1}"))
+        
+    if nav_buttons:
+        markup.row(*nav_buttons)
+        
+    # زر إضافي للعودة لتحديث محتوى القسم أو القائمة
+    markup.add(InlineKeyboardButton(text="🔄 تحديث هذا القسم", callback_data=f"open_{button_id}"))
+    
+    # إرسال رسالة التحكم بالصفحات أسفل الملفات المرسلة
+    bot.send_message(
+        chat_id,
+        f"📑 مجموعة الملفات الحالية: [ {page} من {total_pages} ]\n📦 إجمالي الملفات في هذا القسم: {total_files} ملف.",
+        reply_markup=markup
+    )
+
+
 def register_user_handlers():
 
     # 1. أمر البدء (المدخل الرئيسي)
