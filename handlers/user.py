@@ -61,7 +61,7 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
 # 🛠️ الدالة الرئيسية لتسجيل كل معالجات المستخدم (User Handlers)
 def register_user_handlers():
 
-    # 1. أمر البدء (المدخل الرئيسي)
+    # 1. أمر البدء (المدخل الرئيسي المحدث)
     @bot.message_handler(commands=['start'])
     def cmd_start(message):
         chat_id = message.chat.id
@@ -70,6 +70,14 @@ def register_user_handlers():
         first_name = message.from_user.first_name or ""
         last_name = message.from_user.last_name or ""
 
+        clear_user_state(user_id)
+
+        # التحقق أولاً: إذا لم يكن في القناة، أرسل رسالة الانضمام واقطع التنفيذ فوراً دون حفظه
+        if not is_user_in_batch(bot, user_id):
+            send_join_request_menu(bot, chat_id)
+            return
+
+        # الحفظ في قاعدة البيانات يتم هنا فقط بعد تخطي الفحص بنجاح
         execute_query(
             """
             INSERT INTO users (user_id, username, first_name, last_name)
@@ -83,12 +91,6 @@ def register_user_handlers():
             (user_id, username, first_name, last_name),
             commit=True
         )
-
-        clear_user_state(user_id)
-
-        if not is_user_in_batch(bot, user_id):
-            send_join_request_menu(bot, chat_id)
-            return
 
         res = execute_query("SELECT phone_number FROM users WHERE user_id = %s;", (user_id,), fetch=True)
         has_phone = bool(res and res[0][0])
@@ -126,16 +128,36 @@ def register_user_handlers():
         bot.send_message(message.chat.id, "✅ تم تسجيل رقمك بنجاح. شكراً لك!", reply_markup=types.ReplyKeyboardRemove())
         show_main_menu(message.chat.id, user_id)
 
-    # 4. زر التحقق من العضوية
+    # 4. زر التحقق من العضوية (المحدث لتسجيل البيانات عند النجاح)
     @bot.callback_query_handler(func=lambda call: call.data == "check_membership")
     def handle_check_membership(call):
         user_id = call.from_user.id
         chat_id = call.message.chat.id
+        
         if is_user_in_batch(bot, user_id):
             bot.answer_callback_query(call.id, "✅ تم التحقق من عضويتك!", show_alert=True)
             
             try: bot.delete_message(chat_id, call.message.message_id)
             except Exception: pass
+            
+            # بما أنه نجح بالتحقق الآن، نقوم بإدراج بياناته في قاعدة البيانات لأول مرة
+            username = call.from_user.username or "NoUsername"
+            first_name = call.from_user.first_name or ""
+            last_name = call.from_user.last_name or ""
+            
+            execute_query(
+                """
+                INSERT INTO users (user_id, username, first_name, last_name)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (user_id)
+                DO UPDATE SET 
+                    username = EXCLUDED.username,
+                    first_name = EXCLUDED.first_name,
+                    last_name = EXCLUDED.last_name;
+                """,
+                (user_id, username, first_name, last_name),
+                commit=True
+            )
             
             res = execute_query("SELECT phone_number FROM users WHERE user_id = %s;", (user_id,), fetch=True)
             if not (res and res[0][0]):
@@ -155,7 +177,7 @@ def register_user_handlers():
         text = "👋 أهلاً بك في البوت الطبي التعليمي.\n\nالرجاء استخدام الأزرار أدناه للتنقل وتصفح الملفات الطبية 👇"
         bot.send_message(chat_id, text, reply_markup=make_main_menu_markup(perms, user_id))
 
-    # 6. العودة للمنيو الرئيسي (حذف الرسالة الحالية مباشرة وإرسال المنيو الرئيسي نظيفاً)
+    # 6. العودة للمنيو الرئيسي
     @bot.callback_query_handler(func=lambda call: call.data == "main_menu")
     def cb_main_menu(call):
         chat_id = call.message.chat.id
@@ -166,7 +188,7 @@ def register_user_handlers():
         show_main_menu(chat_id, call.from_user.id)
         bot.answer_callback_query(call.id)
 
-    # 📁 المشكلة الأولى: دالة فتح المجلد الذكية (نظام التعديل والحذف الهجين)
+    # 📁 دالة فتح المجلد الذكية
     @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
     def cb_open_folder(call):
         bot.answer_callback_query(call.id)
@@ -186,18 +208,15 @@ def register_user_handlers():
             base_text = f"📂 {btn_name}\n\n{msg_text or ''}"
             sub_markup = make_sub_menu_markup(btn_id, perms["is_admin"])
             
-            # فحص استباقي: هل يحتوي هذا القسم على ملفات؟
             count_res = execute_query("SELECT COUNT(*) FROM button_files WHERE button_id = %s;", (btn_id,), fetch=True)
             total_files = count_res[0][0] if count_res else 0
             
             if total_files > 0:
-                # الحالة أ: توجد ملفات -> نحذف القائمة الحالية لكي تظهر الملفات ثم القائمة الجديدة تحتها مباشرة
                 try: bot.delete_message(chat_id, call.message.message_id)
                 except Exception: pass
                 
                 send_button_files_page(chat_id, btn_id, page=1, sub_menu_markup=sub_markup, base_text=base_text)
             else:
-                # الحالة ب: لا توجد ملفات (أقسام فقط) -> تعديل سلس للرسالة الحالية في مكانها دون إرسال جديد!
                 try:
                     bot.edit_message_text(
                         chat_id=chat_id,
@@ -211,7 +230,7 @@ def register_user_handlers():
         except Exception as e:
             print(f"❌ خطأ داخل دالة cb_open_folder: {e}")
 
-    # 🔙 المشكلة الثالثة والرابعة: معالج الرجوع الآمن والتعديل الفوري بدون تراكم
+    # 🔙 معالج الرجوع الآمن والتعديل الفوري
     @bot.callback_query_handler(func=lambda call: call.data.startswith("back_"))
     def cb_back(call):
         bot.answer_callback_query(call.id)
@@ -239,7 +258,6 @@ def register_user_handlers():
         base_text = f"📂 {btn_name}\n\n{msg_text or ''}"
         parent_markup = make_sub_menu_markup(parent_id, perms["is_admin"])
 
-        # تعديل رسالة التحكم الحالية بشكل مباشر لتتحول لقائمة الأب دون ترك أي مخلفات بالجروب
         try:
             bot.edit_message_text(
                 chat_id=chat_id,
@@ -248,12 +266,11 @@ def register_user_handlers():
                 reply_markup=parent_markup
             )
         except Exception:
-            # صمام أمان: إذا فشل التعديل لأي سبب، نقوم بالحذف الفوري وإعادة الإرسال نظيفاً
             try: bot.delete_message(chat_id, call.message.message_id)
             except Exception: pass
             bot.send_message(chat_id, base_text, reply_markup=parent_markup)
 
-    # 🔄 المشكلة الثانية: معالج أزرار التنقل (حذف الرسالة الحالية وإرسال الدفعة الجديدة بذكاء)
+    # 🔄 معالج أزرار التنقل
     @bot.callback_query_handler(func=lambda call: call.data.startswith("files_"))
     def cb_files_pagination(call):
         bot.answer_callback_query(call.id)
@@ -263,7 +280,6 @@ def register_user_handlers():
         btn_id = int(parts[1])
         page = int(parts[2])
         
-        # حذف رسالة التحكم الحالية فوراً لمنع تعليقها بالـ Chat وتجنب التكرار
         try: bot.delete_message(chat_id=chat_id, message_id=call.message.message_id)
         except Exception: pass
                 
@@ -275,7 +291,6 @@ def register_user_handlers():
                 perms = get_permissions(user_id)
                 sub_markup = make_sub_menu_markup(btn_id, perms["is_admin"])
                 
-                # إرسال الدفعة التالية من الملفات متبوعة بكتلة أزرار التحكم الجديدة بالأسفل
                 send_button_files_page(chat_id, btn_id, page=page, sub_menu_markup=sub_markup, base_text=base_text)
         except Exception as e:
             print(f"Error in pagination: {e}")
@@ -328,4 +343,4 @@ def register_user_handlers():
         bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
         
         show_main_menu(message.chat.id, user_id)
-            
+        
