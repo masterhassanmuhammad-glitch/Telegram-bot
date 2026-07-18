@@ -167,16 +167,24 @@ def register_user_handlers():
         else:
             bot.answer_callback_query(call.id, "عذراً، أنت لست عضواً في كلية الطب من الدفعتين 35&36", show_alert=True)
 
+
     # 5. عرض القائمة الرئيسية (الحارس المركزي للمنيو)
     def show_main_menu(chat_id, user_id):
+        # التحقق من انضمام المستخدم للدفعة
         if not is_user_in_batch(bot, user_id):
             send_join_request_menu(bot, chat_id)
             return
 
+        # جلب الصلاحيات وبناء القائمة
         perms = get_permissions(user_id)
-        text = "🏛️ القائمة الرئيسية\n\n ﴿يَرْفَعِ اللَّهُ الَّذِينَ آمَنُوا مِنكُمْ وَالَّذِينَ أُوتُوا الْعِلْمَ دَرَجَاتٍ﴾
-\n 📖 سورة المجادلة: 11"
+        
+        text = """🏛️ القائمة الرئيسية
+
+﴿يَرْفَعِ اللَّهُ الَّذِينَ آمَنُوا مِنكُمْ وَالَّذِينَ أُوتُوا الْعِلْمَ دَرَجَاتٍ﴾
+📖 سورة المجادلة: 11"""
+
         bot.send_message(chat_id, text, reply_markup=make_main_menu_markup(perms, user_id))
+        
 
     # 6. العودة للمنيو الرئيسي
     @bot.callback_query_handler(func=lambda call: call.data == "main_menu")
