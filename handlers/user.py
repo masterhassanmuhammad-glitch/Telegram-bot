@@ -14,6 +14,9 @@ from keyboards import make_main_menu_markup, make_sub_menu_markup
 
 PAGE_SIZE = 10  # عدد الملفات في كل صفحة
 
+# 🔄 قاموس لتتبع رسائل التحكم بالصفحات وحذفها عند التنقل بين الأقسام
+active_pagination = {}
+
 # 📑 الدالة المساعدة لتقسيم الملفات إلى صفحات
 def send_button_files_page(chat_id, button_id, page=1):
     offset = (page - 1) * PAGE_SIZE
@@ -67,12 +70,13 @@ def send_button_files_page(chat_id, button_id, page=1):
     # زر إضافي للعودة لتحديث محتوى القسم أو القائمة
     markup.add(InlineKeyboardButton(text="🔄 تحديث هذا القسم", callback_data=f"open_{button_id}"))
     
-    # إرسال رسالة التحكم بالصفحات أسفل الملفات المرسلة
-    bot.send_message(
+    # إرسال رسالة التحكم بالصفحات أسفل الملفات المرسلة وحفظ الـ ID الخاص بها للتتبع
+    sent_pag = bot.send_message(
         chat_id,
         f"📑 مجموعة الملفات الحالية: [ {page} من {total_pages} ]\n📦 إجمالي الملفات في هذا القسم: {total_files} ملف.",
         reply_markup=markup
     )
+    active_pagination[chat_id] = sent_pag.message_id
 
 
 def register_user_handlers():
@@ -149,7 +153,6 @@ def register_user_handlers():
         execute_query("UPDATE users SET phone_number = %s WHERE user_id = %s;", (phone_number, user_id), commit=True)
         clear_user_state(user_id)
         
-        # ✅ تم التعديل هنا إلى ReplyKeyboardRemove لإزالة أزرار مشاركة الرقم بدون مشاكل
         bot.send_message(message.chat.id, "✅ تم تسجيل رقمك بنجاح. شكراً لك!", reply_markup=types.ReplyKeyboardRemove())
         show_main_menu(message.chat.id, user_id)
 
@@ -179,72 +182,122 @@ def register_user_handlers():
     # 6. الروتينات الأخرى (القائمة، فتح المجلدات، المراسلة)
     @bot.callback_query_handler(func=lambda call: call.data == "main_menu")
     def cb_main_menu(call):
-        show_main_menu(call.message.chat.id, call.from_user.id)
+        chat_id = call.message.chat.id
+        # تنظيف رسائل الترقيم القديمة عند العودة للمنيو الرئيسي
+        if chat_id in active_pagination:
+            try:
+                bot.delete_message(chat_id, active_pagination[chat_id])
+                del active_pagination[chat_id]
+            except Exception:
+                pass
+        show_main_menu(chat_id, call.from_user.id)
         bot.answer_callback_query(call.id)
 
-        # 📁 دالة فتح المجلد المعدلة والمصححة بالكامل مع زر العودة الديناميكي
+    # 📁 دالة فتح المجلد بالتسلسل الصحيح الذي طلبته (حذف -> إرسال ملفات -> إرسال منيو جديد بالأسفل)
     @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
     def cb_open_folder(call):
         bot.answer_callback_query(call.id)
         user_id = call.from_user.id
+        chat_id = call.message.chat.id
         parts = call.data.split("_")
         btn_id = int(parts[1])
-    
+        
         try:
-            # 1. جلب معلومات المجلد/الزر ومعه الـ parent_id من قاعدة البيانات
-            btn_info = execute_query("SELECT name, message_text, parent_id FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
+            # 1. جلب معلومات المجلد/الزر من قاعدة البيانات
+            btn_info = execute_query("SELECT name, message_text FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
             if not btn_info: 
-                bot.send_message(call.message.chat.id, "⚠️ عذراً، هذا القسم غير موجود أو تم حذفه مسبقاً.")
+                bot.send_message(chat_id, "⚠️ عذراً، هذا القسم غير موجود أو تم حذفه مسبقاً.")
                 return
-                
-            btn_name, msg_text, parent_id = btn_info[0]
+            btn_name, msg_text = btn_info[0]
+            
             perms = get_permissions(user_id)
             
-            # 2. توليد الكيبورد الفرعي الحالي من ملف الـ keyboards
-            markup = make_sub_menu_markup(btn_id, perms["is_admin"])
+            # 2. التحقق من وجود ملفات داخل هذا القسم لتطبيق المنطق المناسب
+            count_res = execute_query("SELECT COUNT(*) FROM button_files WHERE button_id = %s;", (btn_id,), fetch=True)
+            total_files = count_res[0][0] if count_res else 0
             
-            # 🔙 [إضافة زر العودة]: تحديد وجهة الرجوع تلقائياً
-            if parent_id:
-                back_callback = f"open_{parent_id}"  # يعود للقسم الأب الأعلى منه
-            else:
-                back_callback = "main_menu"          # إذا كان قسماً رئيسياً يعود للمنيو الرئيسي
+            # 🗑️ تنظيف رسالة التحكم بالصفحات السابقة (إن وجدت)
+            if chat_id in active_pagination:
+                try:
+                    bot.delete_message(chat_id, active_pagination[chat_id])
+                    del active_pagination[chat_id]
+                except Exception:
+                    pass
+
+            if total_files > 0:
+                # 🔄 السيناريو الأول: يحتوي على ملفات (حذف المنيو القديم تماماً)
+                try:
+                    bot.delete_message(chat_id, call.message.message_id)
+                except Exception:
+                    pass
                 
-            # إضافة زر الرجوع في سطر منفصل أسفل أزرار القسم
-            markup.add(types.InlineKeyboardButton(text="🔙 عودة للقسم السابق", callback_data=back_callback))
-            
-            # 3. تحديث نص الرسالة الحالية وعرض القائمة والأزرار الفرعية مع زر العودة
-            bot.edit_message_text(
-                chat_id=call.message.chat.id,
-                message_id=call.message.message_id,
-                text=f"📂 {btn_name}\n\n{msg_text or ''}",
-                reply_markup=markup
-            )
-            
-            # 4. استدعاء الدالة المساعدة لتبدأ تلقائياً بإرسال أول 10 ملفات فقط (الصفحة رقم 1)
-            send_button_files_page(call.message.chat.id, btn_id, page=1)
+                # إرسال الملفات أولاً (وتلقائياً سترسل رسالة الترقيم تحتها)
+                send_button_files_page(chat_id, btn_id, page=1)
+                
+                # إرسال المنيو الشجري من جديد ليصبح في نهاية المحادثة تماماً بالأسفل 👇
+                new_menu = bot.send_message(
+                    chat_id,
+                    f"📂 {btn_name}\n\n{msg_text or ''}",
+                    reply_markup=make_sub_menu_markup(btn_id, perms["is_admin"])
+                )
+                active_menus[chat_id] = new_menu.message_id
+                
+            else:
+                # 🔄 السيناريو الثاني: القسم فارغ تماماً (تطبيق ملاحظتك الإضافية بعدم الحذف الفوضوي)
+                # نكتفي بتعديل الرسالة في مكانها لعدم وجود ملفات تفصل الشات بصرياً
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=call.message.message_id,
+                    text=f"📂 {btn_name}\n\n{msg_text or ''}\n\n*(⚠️ لا توجد ملفات مرفوعة في هذا القسم حالياً)*",
+                    parse_mode="Markdown",
+                    reply_markup=make_sub_menu_markup(btn_id, perms["is_admin"])
+                )
+                active_menus[chat_id] = call.message.message_id
             
         except Exception as e:
             print(f"❌ خطأ برمجي داخل دالة cb_open_folder: {e}")
-            bot.send_message(call.message.chat.id, f"❌ حدث خطأ داخلي في الكود:\n\n`{str(e)}`")
-            
+            bot.send_message(chat_id, f"❌ حدث خطأ داخلي في الكود:\n\n`{str(e)}`")
 
-    # 🔄 معالج أزرار التنقل (التالي / السابق) لإدارة الصفحات
+    # 🔄 معالج أزرار التنقل (التالي / السابق) المعدل ليحفظ المنيو الشجري بالأسفل دائماً
     @bot.callback_query_handler(func=lambda call: call.data.startswith("files_"))
     def cb_files_pagination(call):
         bot.answer_callback_query(call.id)
         user_id = call.from_user.id
+        chat_id = call.message.chat.id
         parts = call.data.split("_")
         btn_id = int(parts[1])
         page = int(parts[2])
         
-        # حذف رسالة التحكم بالصفحة السابقة لتبقى المحادثة نظيفة ومنظمة
+        # 1. حذف رسالة التحكم بالصفحة السابقة الحالية
         try:
-            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
+            bot.delete_message(chat_id=chat_id, message_id=call.message.message_id)
         except Exception:
             pass
             
-        # استدعاء الصفحة الجديدة المطلوبة من الملفات
-        send_button_files_page(call.message.chat.id, btn_id, page=page)
+        # 2. حذف رسالة المنيو الشجري القديمة حتى لا تنحصر وتتحشر بالمنتصف بين الصفحات القديمة والجديدة
+        if chat_id in active_menus:
+            try:
+                bot.delete_message(chat_id, active_menus[chat_id])
+            except Exception:
+                pass
+                
+        # 3. إرسال الصفحة الجديدة من الملفات (سترسل الملفات ورسالة الترقيم الجديدة تحتها)
+        send_button_files_page(chat_id, btn_id, page=page)
+        
+        # 4. إعادة بناء وإرسال المنيو الشجري ليدفع نفسه ليكون أسفل كل شيء بقاع المحادثة 📥
+        try:
+            btn_info = execute_query("SELECT name, message_text FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
+            if btn_info:
+                btn_name, msg_text = btn_info[0]
+                perms = get_permissions(user_id)
+                new_menu = bot.send_message(
+                    chat_id,
+                    f"📂 {btn_name}\n\n{msg_text or ''}",
+                    reply_markup=make_sub_menu_markup(btn_id, perms["is_admin"])
+                )
+                active_menus[chat_id] = new_menu.message_id
+        except Exception as e:
+            print(f"Error restoring menu in pagination: {e}")
         
     @bot.callback_query_handler(func=lambda call: call.data == "user_contact")
     def cb_user_contact(call):
@@ -293,4 +346,4 @@ def register_user_handlers():
         clear_user_state(user_id)
         bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
         show_main_menu(message.chat.id, user_id)
-    
+        
