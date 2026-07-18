@@ -5,12 +5,24 @@ from config import OWNER_ID
 def make_main_menu_markup(perms, user_id=None):
     markup = InlineKeyboardMarkup(row_width=2)
     
-    # 1. جلب الأزرار الرئيسية من قاعدة البيانات
-    main_buttons = execute_query("SELECT id, name FROM buttons WHERE parent_id IS NULL ORDER BY id ASC;", fetch=True)
-    for btn_id, btn_name in main_buttons:
-        markup.add(InlineKeyboardButton(text=btn_name, callback_data=f"open_{btn_id}"))
+    # 1. جلب الأزرار الرئيسية ديناميكياً وترتيبها حسب السطر والترتيب الأفقي
+    main_buttons = execute_query(
+        "SELECT id, name, row_number FROM buttons WHERE parent_id IS NULL ORDER BY row_number ASC, sort_order ASC;", 
+        fetch=True
+    )
+    
+    # تجميع الأزرار المخصصة في أسطر بناءً على إعدادات الآدمن
+    rows = {}
+    for btn_id, btn_name, row_num in main_buttons:
+        if row_num not in rows:
+            rows[row_num] = []
+        rows[row_num].append(InlineKeyboardButton(text=btn_name, callback_data=f"open_{btn_id}"))
         
-    # 2. إضافة الأزرار الإدارية بناءً على الصلاحيات
+    # رص الأزرار الديناميكية أولاً في أعلى القائمة
+    for r in sorted(rows.keys()):
+        markup.row(*rows[r])
+        
+    # 2. إضافة الأزرار الإدارية الثابتة أسفل الأزرار الديناميكية بناءً على الصلاحيات
     if perms.get('is_admin'):
         row_buttons = []
         
@@ -28,24 +40,37 @@ def make_main_menu_markup(perms, user_id=None):
         if row_buttons:
             markup.row(*row_buttons)
             
-        # زر إدارة المشرفين يظهر للمالك فقط (أو من لديه هوية المالك)
+        # زر إدارة المشرفين يظهر للمالك فقط
         if perms.get('is_owner') or user_id == OWNER_ID:
             markup.add(InlineKeyboardButton(text="👥 إدارة المشرفين", callback_data="owner_manage_admins"))
     
-    # زر مراسلة الإدارة الثابت للجميع
+    # زر مراسلة الإدارة الثابت للجميع (في آخر القائمة دائماً)
     markup.add(InlineKeyboardButton(text="📬 مراسلة الإدارة", callback_data="user_contact"))
     
     return markup
 
+
 def make_sub_menu_markup(parent_id, is_admin=False):
     markup = InlineKeyboardMarkup(row_width=2)
     
-    # 1. جلب الأزرار الفرعية التابعة للـ parent_id
-    sub_buttons = execute_query("SELECT id, name FROM buttons WHERE parent_id = %s ORDER BY id ASC;", (parent_id,), fetch=True)
-    for btn_id, btn_name in sub_buttons:
-        markup.add(InlineKeyboardButton(text=btn_name, callback_data=f"open_{btn_id}"))
+    # 1. جلب الأزرار الفرعية ديناميكياً وترتيبها حسب السطر والترتيب الأفقي
+    sub_buttons = execute_query(
+        "SELECT id, name, row_number FROM buttons WHERE parent_id = %s ORDER BY row_number ASC, sort_order ASC;", 
+        (parent_id,), fetch=True
+    )
+    
+    # تجميع الأزرار الفرعية المخصصة في أسطر
+    rows = {}
+    for btn_id, btn_name, row_num in sub_buttons:
+        if row_num not in rows:
+            rows[row_num] = []
+        rows[row_num].append(InlineKeyboardButton(text=btn_name, callback_data=f"open_{btn_id}"))
         
-    # 2. زر العودة الذكي للخلف
+    # رص الأزرار الفرعية الديناميكية
+    for r in sorted(rows.keys()):
+        markup.row(*rows[r])
+        
+    # 2. زر العودة الذكي للخلف (يظهر دائماً في الأسفل)
     parent_info = execute_query("SELECT parent_id FROM buttons WHERE id = %s;", (parent_id,), fetch=True)
     back_id = parent_info[0][0] if parent_info else None
     
@@ -53,6 +78,7 @@ def make_sub_menu_markup(parent_id, is_admin=False):
     markup.add(InlineKeyboardButton(text="🔙 عودة للخلف", callback_data=back_callback))
     
     return markup
+
 
 def make_admin_settings_markup():
     markup = InlineKeyboardMarkup(row_width=1)
@@ -63,6 +89,7 @@ def make_admin_settings_markup():
         InlineKeyboardButton(text="🔙 العودة للقائمة الرئيسية", callback_data="main_menu")
     )
     return markup
+
 
 def make_admin_edit_options_markup(button_id):
     markup = InlineKeyboardMarkup(row_width=2)
@@ -76,6 +103,7 @@ def make_admin_edit_options_markup(button_id):
     )
     markup.add(InlineKeyboardButton(text="🔙 العودة للإعدادات", callback_data="admin_settings"))
     return markup
+
 
 def make_admin_choose_parent_markup(button_name, exclude_id=None):
     markup = InlineKeyboardMarkup(row_width=1)
@@ -91,6 +119,7 @@ def make_admin_choose_parent_markup(button_name, exclude_id=None):
         
     return markup
 
+
 def make_admin_move_button_markup(button_id):
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(InlineKeyboardButton(text="📁 نقل إلى القائمة الرئيسية", callback_data=f"exec_move_{button_id}_null"))
@@ -101,6 +130,7 @@ def make_admin_move_button_markup(button_id):
         
     markup.add(InlineKeyboardButton(text="🔙 إلغاء ونكوص", callback_data=f"choose_edit_{button_id}"))
     return markup
+
 
 def make_admin_file_manager_markup(button_id):
     markup = InlineKeyboardMarkup(row_width=1)
@@ -113,7 +143,6 @@ def make_admin_file_manager_markup(button_id):
     markup.add(InlineKeyboardButton(text="🔙 عودة لخصائص الزر", callback_data=f"choose_edit_{button_id}"))
     return markup
 
-# --- أزرار المالك لإدارة المشرفين وصلاحياتهم (جديد) ---
 
 def make_owner_manage_admins_markup():
     markup = InlineKeyboardMarkup(row_width=1)
@@ -124,6 +153,7 @@ def make_owner_manage_admins_markup():
     )
     return markup
 
+
 def make_remove_admin_list_markup():
     markup = InlineKeyboardMarkup(row_width=1)
     admins = execute_query("SELECT admin_id FROM admins;", fetch=True)
@@ -131,6 +161,7 @@ def make_remove_admin_list_markup():
         markup.add(InlineKeyboardButton(text=f"❌ إزالة المشرف ({adm_id})", callback_data=f"exec_remove_admin_{adm_id}"))
     markup.add(InlineKeyboardButton(text="🔙 عودة", callback_data="owner_manage_admins"))
     return markup
+
 
 def make_permissions_markup(perms_dict, new_admin_id):
     markup = InlineKeyboardMarkup(row_width=1)
@@ -150,4 +181,4 @@ def make_permissions_markup(perms_dict, new_admin_id):
         InlineKeyboardButton(text="🔙 إلغاء والعودة", callback_data="owner_manage_admins")
     )
     return markup
-    
+                                    
