@@ -1,7 +1,5 @@
 from telebot import types
 from .helpers import (
-    active_menus,
-    send_files_and_recreate_menu,
     is_user_in_batch,
     send_join_request_menu,
     get_permissions,
@@ -14,12 +12,9 @@ from keyboards import make_main_menu_markup, make_sub_menu_markup
 
 PAGE_SIZE = 10  # عدد الملفات في كل صفحة
 
-# 🔄 قاموس لتتبع رسائل التحكم بالصفحات وحذفها عند التنقل بين الأقسام
-active_pagination = {}
 
-
-# 📑 الدالة المساعدة لتقسيم الملفات إلى صفحات
-def send_button_files_page(chat_id, button_id, page=1):
+# 📑 الدالة المساعدة لإرسال الملفات ودمج أزرار التحكم في رسالة موحدة بالأسفل
+def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, base_text=""):
     offset = (page - 1) * PAGE_SIZE
     
     # 1. جلب إجمالي عدد الملفات المرتبطة بهذا الزر
@@ -38,7 +33,7 @@ def send_button_files_page(chat_id, button_id, page=1):
         (button_id, PAGE_SIZE, offset), fetch=True
     )
     
-    # 3. إرسال الملفات للطالب
+    # 3. إرسال الملفات للمستخدم أولاً
     for file_id, file_type in files:
         try:
             if file_type == 'document': bot.send_document(chat_id, file_id)
@@ -49,25 +44,17 @@ def send_button_files_page(chat_id, button_id, page=1):
         except Exception as e:
             print(f"Error sending file {file_id}: {str(e)}")
             
-    # 4. بناء كيبورد التحكم
-    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-    markup = InlineKeyboardMarkup()
+    # 4. دمج التحكم بالصفحات مع أزرار المجلد المستقبلة
+    markup = sub_menu_markup if sub_menu_markup is not None else types.InlineKeyboardMarkup()
     
+    # إضافة زر "التالي ▶️" فقط إذا وُجدت صفحات تالية
     if page < total_pages:
-        markup.row(InlineKeyboardButton(text="التالي ▶️", callback_data=f"files_{button_id}_{page+1}"))
-        
-    parent_res = execute_query("SELECT parent_id FROM buttons WHERE id = %s;", (button_id,), fetch=True)
-    parent_id = parent_res[0][0] if parent_res else None
+        markup.row(types.InlineKeyboardButton(text="التالي ▶️", callback_data=f"files_{button_id}_{page+1}"))
     
-    back_callback = f"back_{parent_id}" if parent_id is not None else "main_menu"
-    markup.add(InlineKeyboardButton(text="🔙 العودة للقسم السابق", callback_data=back_callback))
+    # بناء نص الرسالة الموحدة المكتملة
+    full_text = f"{base_text}\n\n📑 مجموعة الملفات: [ {page} من {total_pages} ]\n📦 إجمالي الملفات في هذا القسم: {total_files} ملف."
     
-    sent_pag = bot.send_message(
-        chat_id,
-        f"📑 مجموعة الملفات الحالية: [ {page} من {total_pages} ]\n📦 إجمالي الملفات في هذا القسم: {total_files} ملف.",
-        reply_markup=markup
-    )
-    active_pagination[chat_id] = sent_pag.message_id
+    bot.send_message(chat_id, full_text, reply_markup=markup)
     return True
 
 
@@ -143,49 +130,43 @@ def register_user_handlers():
     @bot.callback_query_handler(func=lambda call: call.data == "check_membership")
     def handle_check_membership(call):
         user_id = call.from_user.id
+        chat_id = call.message.chat.id
         if is_user_in_batch(bot, user_id):
             bot.answer_callback_query(call.id, "✅ تم التحقق من عضويتك!", show_alert=True)
-            bot.delete_message(call.message.chat.id, call.message.message_id)
+            
+            try: bot.delete_message(chat_id, call.message.message_id)
+            except Exception: pass
+            
             res = execute_query("SELECT phone_number FROM users WHERE user_id = %s;", (user_id,), fetch=True)
             if not (res and res[0][0]):
-                ask_for_phone(call.message.chat.id, user_id)
+                ask_for_phone(chat_id, user_id)
             else:
-                show_main_menu(call.message.chat.id, user_id)
+                show_main_menu(chat_id, user_id)
         else:
             bot.answer_callback_query(call.id, "عذراً، أنت لست عضواً في كلية الطب من الدفعتين 35&36", show_alert=True)
 
     # 5. عرض القائمة الرئيسية (الحارس المركزي للمنيو)
     def show_main_menu(chat_id, user_id):
-        # 🔒 صمام الأمان المركزي لحظر أي مستخدم خارج الدفعة يحاول الوصول للملفات
         if not is_user_in_batch(bot, user_id):
             send_join_request_menu(bot, chat_id)
             return
 
         perms = get_permissions(user_id)
         text = "👋 أهلاً بك في البوت الطبي التعليمي.\n\nالرجاء استخدام الأزرار أدناه للتنقل وتصفح الملفات الطبية 👇"
-        sent_menu = bot.send_message(chat_id, text, reply_markup=make_main_menu_markup(perms, user_id))
-        active_menus[chat_id] = sent_menu.message_id
+        bot.send_message(chat_id, text, reply_markup=make_main_menu_markup(perms, user_id))
 
-    # 6. العودة للمنيو الرئيسي تنظف كل شيء أولاً
+    # 6. العودة للمنيو الرئيسي (حذف الرسالة الحالية مباشرة وإرسال المنيو الرئيسي نظيفاً)
     @bot.callback_query_handler(func=lambda call: call.data == "main_menu")
     def cb_main_menu(call):
         chat_id = call.message.chat.id
-        if chat_id in active_pagination:
-            try:
-                bot.delete_message(chat_id, active_pagination[chat_id])
-                active_pagination.pop(chat_id, None)
-            except Exception: pass
-                
-        if chat_id in active_menus:
-            try:
-                bot.delete_message(chat_id, active_menus[chat_id])
-                active_menus.pop(chat_id, None)
-            except Exception: pass
+        
+        try: bot.delete_message(chat_id, call.message.message_id)
+        except Exception: pass
                 
         show_main_menu(chat_id, call.from_user.id)
         bot.answer_callback_query(call.id)
 
-    # 📁 دالة فتح المجلد عند التصفح لأول مرة (ترسل الملفات + المنيو بالأسفل)
+    # 📁 المشكلة الأولى: دالة فتح المجلد الذكية (نظام التعديل والحذف الهجين)
     @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
     def cb_open_folder(call):
         bot.answer_callback_query(call.id)
@@ -202,37 +183,35 @@ def register_user_handlers():
             btn_name, msg_text = btn_info[0]
             perms = get_permissions(user_id)
             
-            if chat_id in active_pagination:
-                try:
-                    bot.delete_message(chat_id, active_pagination[chat_id])
-                    active_pagination.pop(chat_id, None)
-                except Exception: pass
-
-            has_files = send_button_files_page(chat_id, btn_id, page=1)
+            base_text = f"📂 {btn_name}\n\n{msg_text or ''}"
+            sub_markup = make_sub_menu_markup(btn_id, perms["is_admin"])
             
-            if has_files:
+            # فحص استباقي: هل يحتوي هذا القسم على ملفات؟
+            count_res = execute_query("SELECT COUNT(*) FROM button_files WHERE button_id = %s;", (btn_id,), fetch=True)
+            total_files = count_res[0][0] if count_res else 0
+            
+            if total_files > 0:
+                # الحالة أ: توجد ملفات -> نحذف القائمة الحالية لكي تظهر الملفات ثم القائمة الجديدة تحتها مباشرة
                 try: bot.delete_message(chat_id, call.message.message_id)
                 except Exception: pass
                 
-                new_menu = bot.send_message(
-                    chat_id,
-                    f"📂 {btn_name}\n\n{msg_text or ''}",
-                    reply_markup=make_sub_menu_markup(btn_id, perms["is_admin"])
-                )
-                active_menus[chat_id] = new_menu.message_id
+                send_button_files_page(chat_id, btn_id, page=1, sub_menu_markup=sub_markup, base_text=base_text)
             else:
-                bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=call.message.message_id,
-                    text=f"📂 {btn_name}\n\n{msg_text or ''}",
-                    reply_markup=make_sub_menu_markup(btn_id, perms["is_admin"])
-                )
-                active_menus[chat_id] = call.message.message_id
+                # الحالة ب: لا توجد ملفات (أقسام فقط) -> تعديل سلس للرسالة الحالية في مكانها دون إرسال جديد!
+                try:
+                    bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=call.message.message_id,
+                        text=base_text,
+                        reply_markup=sub_markup
+                    )
+                except Exception:
+                    pass
             
         except Exception as e:
             print(f"❌ خطأ داخل دالة cb_open_folder: {e}")
 
-    # 🔙 معالج الرجوع الآمن من الـ ValueError وتجنب تكرار الملفات
+    # 🔙 المشكلة الثالثة والرابعة: معالج الرجوع الآمن والتعديل الفوري بدون تراكم
     @bot.callback_query_handler(func=lambda call: call.data.startswith("back_"))
     def cb_back(call):
         bot.answer_callback_query(call.id)
@@ -240,44 +219,41 @@ def register_user_handlers():
         user_id = call.from_user.id
         
         parent = call.data.split("_")[1]
-        if parent == "None":
+        if parent == "None" or parent == "0":
+            try: bot.delete_message(chat_id, call.message.message_id)
+            except Exception: pass
             show_main_menu(chat_id, user_id)
             return
             
         parent_id = int(parent)
-
-        try: 
-            bot.delete_message(chat_id, call.message.message_id)
-            active_pagination.pop(chat_id, None)
-        except: pass
-
-        if chat_id in active_menus:
-            try:
-                bot.delete_message(chat_id, active_menus[chat_id])
-                active_menus.pop(chat_id, None)
-            except: pass
-
         perms = get_permissions(user_id)
-
-        if parent_id == 0:
-            show_main_menu(chat_id, user_id)
-            return
 
         btn = execute_query("SELECT name, message_text FROM buttons WHERE id=%s;", (parent_id,), fetch=True)
         if not btn:
+            try: bot.delete_message(chat_id, call.message.message_id)
+            except Exception: pass
             show_main_menu(chat_id, user_id)
             return
 
         btn_name, msg_text = btn[0]
+        base_text = f"📂 {btn_name}\n\n{msg_text or ''}"
+        parent_markup = make_sub_menu_markup(parent_id, perms["is_admin"])
 
-        new_menu = bot.send_message(
-            chat_id,
-            f"📂 {btn_name}\n\n{msg_text or ''}",
-            reply_markup=make_sub_menu_markup(parent_id, perms["is_admin"])
-        )
-        active_menus[chat_id] = new_menu.message_id
+        # تعديل رسالة التحكم الحالية بشكل مباشر لتتحول لقائمة الأب دون ترك أي مخلفات بالجروب
+        try:
+            bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                text=base_text,
+                reply_markup=parent_markup
+            )
+        except Exception:
+            # صمام أمان: إذا فشل التعديل لأي سبب، نقوم بالحذف الفوري وإعادة الإرسال نظيفاً
+            try: bot.delete_message(chat_id, call.message.message_id)
+            except Exception: pass
+            bot.send_message(chat_id, base_text, reply_markup=parent_markup)
 
-    # 🔄 معالج أزرار التنقل (التالي)
+    # 🔄 المشكلة الثانية: معالج أزرار التنقل (حذف الرسالة الحالية وإرسال الدفعة الجديدة بذكاء)
     @bot.callback_query_handler(func=lambda call: call.data.startswith("files_"))
     def cb_files_pagination(call):
         bot.answer_callback_query(call.id)
@@ -287,37 +263,31 @@ def register_user_handlers():
         btn_id = int(parts[1])
         page = int(parts[2])
         
-        try: 
-            bot.delete_message(chat_id=chat_id, message_id=call.message.message_id)
-            active_pagination.pop(chat_id, None)
+        # حذف رسالة التحكم الحالية فوراً لمنع تعليقها بالـ Chat وتجنب التكرار
+        try: bot.delete_message(chat_id=chat_id, message_id=call.message.message_id)
         except Exception: pass
-            
-        if chat_id in active_menus:
-            try: 
-                bot.delete_message(chat_id, active_menus[chat_id])
-                active_menus.pop(chat_id, None)
-            except Exception: pass
                 
-        send_button_files_page(chat_id, btn_id, page=page)
-        
         try:
             btn_info = execute_query("SELECT name, message_text FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
             if btn_info:
                 btn_name, msg_text = btn_info[0]
+                base_text = f"📂 {btn_name}\n\n{msg_text or ''}"
                 perms = get_permissions(user_id)
-                new_menu = bot.send_message(
-                    chat_id,
-                    f"📂 {btn_name}\n\n{msg_text or ''}",
-                    reply_markup=make_sub_menu_markup(btn_id, perms["is_admin"])
-                )
-                active_menus[chat_id] = new_menu.message_id
+                sub_markup = make_sub_menu_markup(btn_id, perms["is_admin"])
+                
+                # إرسال الدفعة التالية من الملفات متبوعة بكتلة أزرار التحكم الجديدة بالأسفل
+                send_button_files_page(chat_id, btn_id, page=page, sub_menu_markup=sub_markup, base_text=base_text)
         except Exception as e:
-            print(f"Error restoring menu in pagination: {e}")
+            print(f"Error in pagination: {e}")
         
     @bot.callback_query_handler(func=lambda call: call.data == "user_contact")
     def cb_user_contact(call):
+        chat_id = call.message.chat.id
         set_user_state(call.from_user.id, "WAITING_FEEDBACK_MSG")
-        bot.edit_message_text(chat_id=call.from_user.id, message_id=call.message.message_id, text="📝 اكتب استفسارك هنا:")
+        try:
+            bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text="📝 اكتب استفسارك هنا:")
+        except Exception:
+            pass
         bot.answer_callback_query(call.id)
 
     # 7. معالجة الرسالة وإرسالها للإدارة
@@ -357,5 +327,5 @@ def register_user_handlers():
         clear_user_state(user_id)
         bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
         
-        # عند استدعاء الدالة هنا، سيقوم "الحارس المركزي" بفحص العضوية تلقائياً
         show_main_menu(message.chat.id, user_id)
+            
