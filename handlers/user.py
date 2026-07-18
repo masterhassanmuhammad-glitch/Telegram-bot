@@ -182,7 +182,7 @@ def register_user_handlers():
         show_main_menu(call.message.chat.id, call.from_user.id)
         bot.answer_callback_query(call.id)
 
-    # 📁 دالة فتح المجلد المعدلة والمصححة بالكامل
+        # 📁 دالة فتح المجلد المعدلة والمصححة بالكامل مع زر العودة الديناميكي
     @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
     def cb_open_folder(call):
         bot.answer_callback_query(call.id)
@@ -191,29 +191,42 @@ def register_user_handlers():
         btn_id = int(parts[1])
     
         try:
-            # 1. جلب معلومات المجلد/الزر من قاعدة البيانات
-            btn_info = execute_query("SELECT name, message_text FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
+            # 1. جلب معلومات المجلد/الزر ومعه الـ parent_id من قاعدة البيانات
+            btn_info = execute_query("SELECT name, message_text, parent_id FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
             if not btn_info: 
                 bot.send_message(call.message.chat.id, "⚠️ عذراً، هذا القسم غير موجود أو تم حذفه مسبقاً.")
                 return
-            btn_name, msg_text = btn_info[0]
-            
+                
+            btn_name, msg_text, parent_id = btn_info[0]
             perms = get_permissions(user_id)
             
-            # 2. تحديث نص الرسالة الحالية وعرض القائمة والأزرار الفرعية للطالب (المنيو الشجري)
+            # 2. توليد الكيبورد الفرعي الحالي من ملف الـ keyboards
+            markup = make_sub_menu_markup(btn_id, perms["is_admin"])
+            
+            # 🔙 [إضافة زر العودة]: تحديد وجهة الرجوع تلقائياً
+            if parent_id:
+                back_callback = f"open_{parent_id}"  # يعود للقسم الأب الأعلى منه
+            else:
+                back_callback = "main_menu"          # إذا كان قسماً رئيسياً يعود للمنيو الرئيسي
+                
+            # إضافة زر الرجوع في سطر منفصل أسفل أزرار القسم
+            markup.add(types.InlineKeyboardButton(text="🔙 عودة للقسم السابق", callback_data=back_callback))
+            
+            # 3. تحديث نص الرسالة الحالية وعرض القائمة والأزرار الفرعية مع زر العودة
             bot.edit_message_text(
                 chat_id=call.message.chat.id,
                 message_id=call.message.message_id,
                 text=f"📂 {btn_name}\n\n{msg_text or ''}",
-                reply_markup=make_sub_menu_markup(btn_id, perms["is_admin"])
+                reply_markup=markup
             )
             
-            # 3. استدعاء الدالة المساعدة لتبدأ تلقائياً بإرسال أول 10 ملفات فقط (الصفحة رقم 1)
+            # 4. استدعاء الدالة المساعدة لتبدأ تلقائياً بإرسال أول 10 ملفات فقط (الصفحة رقم 1)
             send_button_files_page(call.message.chat.id, btn_id, page=1)
             
         except Exception as e:
             print(f"❌ خطأ برمجي داخل دالة cb_open_folder: {e}")
             bot.send_message(call.message.chat.id, f"❌ حدث خطأ داخلي في الكود:\n\n`{str(e)}`")
+            
 
     # 🔄 معالج أزرار التنقل (التالي / السابق) لإدارة الصفحات
     @bot.callback_query_handler(func=lambda call: call.data.startswith("files_"))
