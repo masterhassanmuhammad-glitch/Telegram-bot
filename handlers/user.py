@@ -17,7 +17,7 @@ PAGE_SIZE = 10  # عدد الملفات في كل صفحة
 # 🔄 قاموس لتتبع رسائل التحكم بالصفحات وحذفها عند التنقل بين الأقسام
 active_pagination = {}
 
-# 📑 الدالة المساعدة لتقسيم الملفات إلى صفحات
+# 📑 الدالة المساعدة لتقسيم الملفات إلى صفحات (تعيد True إذا أرسلت ملفات و False إذا كانت فارغة)
 def send_button_files_page(chat_id, button_id, page=1):
     offset = (page - 1) * PAGE_SIZE
     
@@ -25,9 +25,9 @@ def send_button_files_page(chat_id, button_id, page=1):
     count_res = execute_query("SELECT COUNT(*) FROM button_files WHERE button_id = %s;", (button_id,), fetch=True)
     total_files = count_res[0][0] if count_res else 0
     
-    # إذا لم تكن هناك ملفات، نخرج فوراً دون إرسال أي شيء
+    # [تعديل]: إذا لم تكن هناك ملفات، نخرج فوراً ونرجع False لتوفير الاستعلامات التالية
     if total_files == 0:
-        return
+        return False
         
     # حساب إجمالي عدد الصفحات
     total_pages = (total_files + PAGE_SIZE - 1) // PAGE_SIZE
@@ -41,42 +41,38 @@ def send_button_files_page(chat_id, button_id, page=1):
     # 3. إرسال الملفات العشرة الحالية للطالب
     for file_id, file_type in files:
         try:
-            if file_type == 'document':
-                bot.send_document(chat_id, file_id)
-            elif file_type == 'photo':
-                bot.send_photo(chat_id, file_id)
-            elif file_type == 'audio':
-                bot.send_audio(chat_id, file_id)
-            elif file_type == 'video':
-                bot.send_video(chat_id, file_id)
-            elif file_type == 'voice':
-                bot.send_voice(chat_id, file_id)
+            if file_type == 'document': bot.send_document(chat_id, file_id)
+            elif file_type == 'photo': bot.send_photo(chat_id, file_id)
+            elif file_type == 'audio': bot.send_audio(chat_id, file_id)
+            elif file_type == 'video': bot.send_video(chat_id, file_id)
+            elif file_type == 'voice': bot.send_voice(chat_id, file_id)
         except Exception as e:
             print(f"Error sending file {file_id}: {str(e)}")
             
-    # 4. بناء كيبورد التنقل بين الصفحات (التالي والسابق)
+    # 4. بناء كيبورد التحكم الجديد (التالي + العودة للقسم السابق فقط)
     from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
     markup = InlineKeyboardMarkup()
     
-    nav_buttons = []
-    if page > 1:
-        nav_buttons.append(InlineKeyboardButton(text="◀️ السابق", callback_data=f"files_{button_id}_{page-1}"))
+    # زر التالي فقط (إذا كان هناك صفحات قادمة)
     if page < total_pages:
-        nav_buttons.append(InlineKeyboardButton(text="التالي ▶️", callback_data=f"files_{button_id}_{page+1}"))
+        markup.row(InlineKeyboardButton(text="التالي ▶️", callback_data=f"files_{button_id}_{page+1}"))
         
-    if nav_buttons:
-        markup.row(*nav_buttons)
-        
-    # زر إضافي للعودة لتحديث محتوى القسم أو القائمة
-    markup.add(InlineKeyboardButton(text="🔄 تحديث هذا القسم", callback_data=f"open_{button_id}"))
+    # جلب الـ parent_id للقسم الحالي ليعود الزر إليه بشكل ديناميكي صحيح
+    parent_res = execute_query("SELECT parent_id FROM buttons WHERE id = %s;", (button_id,), fetch=True)
+    parent_id = parent_res[0][0] if parent_res else None
+    back_callback = f"open_{parent_id}" if parent_id else "main_menu"
     
-    # إرسال رسالة التحكم بالصفحات أسفل الملفات المرسلة وحفظ الـ ID الخاص بها للتتبع
+    # إضافة زر العودة في سطر منفصل أسفل زر التالي
+    markup.add(InlineKeyboardButton(text="🔙 العودة للقسم السابق", callback_data=back_callback))
+    
+    # إرسال رسالة التحكم بالصفحات وحفظ الـ ID الخاص بها للتتبع
     sent_pag = bot.send_message(
         chat_id,
         f"📑 مجموعة الملفات الحالية: [ {page} من {total_pages} ]\n📦 إجمالي الملفات في هذا القسم: {total_files} ملف.",
         reply_markup=markup
     )
     active_pagination[chat_id] = sent_pag.message_id
+    return True
 
 
 def register_user_handlers():
@@ -90,7 +86,6 @@ def register_user_handlers():
         first_name = message.from_user.first_name or ""
         last_name = message.from_user.last_name or ""
 
-        # تسجيل المستخدم في قاعدة البيانات مع حفظ الأسماء
         execute_query(
             """
             INSERT INTO users (user_id, username, first_name, last_name)
@@ -107,12 +102,10 @@ def register_user_handlers():
 
         clear_user_state(user_id)
 
-        # أ. التحقق من المجموعة
         if not is_user_in_batch(bot, user_id):
             send_join_request_menu(bot, chat_id)
             return
 
-        # ب. التحقق من رقم الهاتف
         res = execute_query("SELECT phone_number FROM users WHERE user_id = %s;", (user_id,), fetch=True)
         has_phone = bool(res and res[0][0])
 
@@ -120,7 +113,6 @@ def register_user_handlers():
             ask_for_phone(chat_id, user_id)
             return
 
-        # ج. إذا كان كل شيء تمام، عرض القائمة الرئيسية
         show_main_menu(chat_id, user_id)
 
     # 2. وظيفة طلب رقم الهاتف
@@ -135,21 +127,15 @@ def register_user_handlers():
             reply_markup=markup
         )
 
-    # 3. معالجة إرسال الرقم (النسخة المؤمنة والمصححة)
+    # 3. معالجة إرسال الرقم
     @bot.message_handler(func=check_state("WAITING_PHONE"), content_types=['contact'])
     def process_phone_number(message):
         user_id = message.from_user.id
-        
-        # 🛡️ التحقق من أن الرقم المرسل يخص الطالب نفسه لمنع انتحال الهويات
         if message.contact.user_id != user_id:
-            bot.reply_to(
-                message,
-                "❌ يرجى مشاركة رقم هاتفك الشخصي فقط."
-            )
+            bot.reply_to(message, "❌ يرجى مشاركة رقم هاتفك الشخصي فقط.")
             return
             
         phone_number = message.contact.phone_number
-        
         execute_query("UPDATE users SET phone_number = %s WHERE user_id = %s;", (phone_number, user_id), commit=True)
         clear_user_state(user_id)
         
@@ -163,7 +149,6 @@ def register_user_handlers():
         if is_user_in_batch(bot, user_id):
             bot.answer_callback_query(call.id, "✅ تم التحقق من عضويتك!", show_alert=True)
             bot.delete_message(call.message.chat.id, call.message.message_id)
-            # الانتقال لخطوة الهاتف أو القائمة
             res = execute_query("SELECT phone_number FROM users WHERE user_id = %s;", (user_id,), fetch=True)
             if not (res and res[0][0]):
                 ask_for_phone(call.message.chat.id, user_id)
@@ -172,7 +157,7 @@ def register_user_handlers():
         else:
             bot.answer_callback_query(call.id, "عذراً، أنت لست عضواً في كلية الطب من الدفعتين 35&36", show_alert=True)
 
-    # 5. عرض القائمة الرئيسية (دالة مساعدة)
+    # 5. عرض القائمة الرئيسية
     def show_main_menu(chat_id, user_id):
         perms = get_permissions(user_id)
         text = "👋 أهلاً بك في البوت الطبي التعليمي.\n\nالرجاء استخدام الأزرار أدناه للتنقل وتصفح الملفات الطبية 👇"
@@ -183,17 +168,25 @@ def register_user_handlers():
     @bot.callback_query_handler(func=lambda call: call.data == "main_menu")
     def cb_main_menu(call):
         chat_id = call.message.chat.id
-        # تنظيف رسائل الترقيم القديمة عند العودة للمنيو الرئيسي
         if chat_id in active_pagination:
             try:
                 bot.delete_message(chat_id, active_pagination[chat_id])
                 del active_pagination[chat_id]
             except Exception:
                 pass
+                
+        # [تعديل حسن]: حذف رسالة المنيو الحالية قبل إرسال المنيو الرئيسي الجديد لتجنب التراكم
+        if chat_id in active_menus:
+            try:
+                bot.delete_message(chat_id, active_menus[chat_id])
+                del active_menus[chat_id]
+            except Exception:
+                pass
+                
         show_main_menu(chat_id, call.from_user.id)
         bot.answer_callback_query(call.id)
 
-    # 📁 دالة فتح المجلد بالتسلسل الصحيح الذي طلبته (حذف -> إرسال ملفات -> إرسال منيو جديد بالأسفل)
+    # 📁 دالة فتح المجلد بالتسلسل الذكي والمحسن الجديد
     @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
     def cb_open_folder(call):
         bot.answer_callback_query(call.id)
@@ -203,20 +196,14 @@ def register_user_handlers():
         btn_id = int(parts[1])
         
         try:
-            # 1. جلب معلومات المجلد/الزر من قاعدة البيانات
             btn_info = execute_query("SELECT name, message_text FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
             if not btn_info: 
                 bot.send_message(chat_id, "⚠️ عذراً، هذا القسم غير موجود أو تم حذفه مسبقاً.")
                 return
             btn_name, msg_text = btn_info[0]
-            
             perms = get_permissions(user_id)
             
-            # 2. التحقق من وجود ملفات داخل هذا القسم لتطبيق المنطق المناسب
-            count_res = execute_query("SELECT COUNT(*) FROM button_files WHERE button_id = %s;", (btn_id,), fetch=True)
-            total_files = count_res[0][0] if count_res else 0
-            
-            # 🗑️ تنظيف رسالة التحكم بالصفحات السابقة (إن وجدت)
+            # تنظيف رسالة الصفحات القديمة فوراً
             if chat_id in active_pagination:
                 try:
                     bot.delete_message(chat_id, active_pagination[chat_id])
@@ -224,17 +211,16 @@ def register_user_handlers():
                 except Exception:
                     pass
 
-            if total_files > 0:
-                # 🔄 السيناريو الأول: يحتوي على ملفات (حذف المنيو القديم تماماً)
+            # [تعديل حسن]: استدعاء الإرسال أولاً وحفظ النتيجة المنطقية لمعرفة حالة القسم
+            has_files = send_button_files_page(chat_id, btn_id, page=1)
+            
+            if has_files:
+                # السيناريو الأول: يحتوي ملفات -> نحذف المنيو القديم ونرسل منيو جديد بالأسفل
                 try:
                     bot.delete_message(chat_id, call.message.message_id)
                 except Exception:
                     pass
                 
-                # إرسال الملفات أولاً (وتلقائياً سترسل رسالة الترقيم تحتها)
-                send_button_files_page(chat_id, btn_id, page=1)
-                
-                # إرسال المنيو الشجري من جديد ليصبح في نهاية المحادثة تماماً بالأسفل 👇
                 new_menu = bot.send_message(
                     chat_id,
                     f"📂 {btn_name}\n\n{msg_text or ''}",
@@ -243,13 +229,11 @@ def register_user_handlers():
                 active_menus[chat_id] = new_menu.message_id
                 
             else:
-                # 🔄 السيناريو الثاني: القسم فارغ تماماً (تطبيق ملاحظتك الإضافية بعدم الحذف الفوضوي)
-                # نكتفي بتعديل الرسالة في مكانها لعدم وجود ملفات تفصل الشات بصرياً
+                # السيناريو الثاني: فارغ -> نعدل المنيو القديم مكانه بشكل طبيعي وبدون إظهار رسالة التحذير المزعجة
                 bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=call.message.message_id,
-                    text=f"📂 {btn_name}\n\n{msg_text or ''}\n\n*(⚠️ لا توجد ملفات مرفوعة في هذا القسم حالياً)*",
-                    parse_mode="Markdown",
+                    text=f"📂 {btn_name}\n\n{msg_text or ''}",
                     reply_markup=make_sub_menu_markup(btn_id, perms["is_admin"])
                 )
                 active_menus[chat_id] = call.message.message_id
@@ -258,7 +242,7 @@ def register_user_handlers():
             print(f"❌ خطأ برمجي داخل دالة cb_open_folder: {e}")
             bot.send_message(chat_id, f"❌ حدث خطأ داخلي في الكود:\n\n`{str(e)}`")
 
-    # 🔄 معالج أزرار التنقل (التالي / السابق) المعدل ليحفظ المنيو الشجري بالأسفل دائماً
+    # 🔄 معالج أزرار التنقل (زر التالي فقط)
     @bot.callback_query_handler(func=lambda call: call.data.startswith("files_"))
     def cb_files_pagination(call):
         bot.answer_callback_query(call.id)
@@ -268,23 +252,21 @@ def register_user_handlers():
         btn_id = int(parts[1])
         page = int(parts[2])
         
-        # 1. حذف رسالة التحكم بالصفحة السابقة الحالية
         try:
             bot.delete_message(chat_id=chat_id, message_id=call.message.message_id)
         except Exception:
             pass
             
-        # 2. حذف رسالة المنيو الشجري القديمة حتى لا تنحصر وتتحشر بالمنتصف بين الصفحات القديمة والجديدة
         if chat_id in active_menus:
             try:
                 bot.delete_message(chat_id, active_menus[chat_id])
             except Exception:
                 pass
                 
-        # 3. إرسال الصفحة الجديدة من الملفات (سترسل الملفات ورسالة الترقيم الجديدة تحتها)
+        # استدعاء الصفحة التالية (سترسل الملفات والتحكم الجديد بالأسفل)
         send_button_files_page(chat_id, btn_id, page=page)
         
-        # 4. إعادة بناء وإرسال المنيو الشجري ليدفع نفسه ليكون أسفل كل شيء بقاع المحادثة 📥
+        # دفع المنيو الشجري ليبقى دائماً أسفل كل شيء
         try:
             btn_info = execute_query("SELECT name, message_text FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
             if btn_info:
@@ -311,11 +293,9 @@ def register_user_handlers():
         user_id = message.from_user.id
         user_text = message.text
         
-        # حفظ الرسالة في قاعدة البيانات
         execute_query("INSERT INTO feedback (user_id, username, message_text) VALUES (%s, %s, %s);", 
                       (user_id, message.from_user.username or "N/A", user_text), commit=True)
         
-        # جلب بيانات الطالب كاملة من قاعدة البيانات
         user_info = execute_query("SELECT first_name, last_name, phone_number FROM users WHERE user_id = %s;", 
                                   (user_id,), fetch=True)
         
@@ -323,7 +303,6 @@ def register_user_handlers():
         if user_info:
             f_name, l_name, phone = user_info[0]
 
-        # صياغة رسالة الإدارة
         admin_notification = (
             f"📬 رسالة جديدة من المستخدم:\n\n"
             f"👤 الاسم: {f_name} {l_name}\n"
@@ -333,7 +312,6 @@ def register_user_handlers():
             f"📄 المحتوى:\n{user_text}"
         )
 
-        # إرسال للإدارة
         notify_ids = {OWNER_ID} if OWNER_ID else set()
         db_admins = execute_query("SELECT admin_id FROM admins WHERE can_feedback = TRUE;", fetch=True)
         for (adm_id,) in db_admins: notify_ids.add(adm_id)
@@ -346,4 +324,4 @@ def register_user_handlers():
         clear_user_state(user_id)
         bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
         show_main_menu(message.chat.id, user_id)
-        
+            
