@@ -174,7 +174,8 @@ def register_user_handlers():
             return
 
         perms = get_permissions(user_id)
-        text = "اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى مُحَمَّدٍ ﷺ.\n\n 🏠 القائمة الرئيسية"
+        text = "🏛️ القائمة الرئيسية\n\n ﴿يَرْفَعِ اللَّهُ الَّذِينَ آمَنُوا مِنكُمْ وَالَّذِينَ أُوتُوا الْعِلْمَ دَرَجَاتٍ﴾
+\n 📖 سورة المجادلة: 11"
         bot.send_message(chat_id, text, reply_markup=make_main_menu_markup(perms, user_id))
 
     # 6. العودة للمنيو الرئيسي
