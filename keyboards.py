@@ -1,184 +1,360 @@
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from database import execute_query
-from config import OWNER_ID
+from telebot import types
+from .helpers import (
+    is_user_in_batch,
+    send_join_request_menu,
+    get_permissions,
+    check_state
+)
 
-def make_main_menu_markup(perms, user_id=None):
-    markup = InlineKeyboardMarkup(row_width=2)
+from config import bot, OWNER_ID, ADMIN_IDS
+from database import execute_query, set_user_state, clear_user_state
+from keyboards import make_main_menu_markup, make_sub_menu_markup
+
+PAGE_SIZE = 10  # عدد الملفات في كل صفحة
+
+
+# 📑 الدالة المساعدة لإرسال الملفات المحدثة باليوزرنيم ودمج أزرار التحكم
+def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, base_text=""):
+    offset = (page - 1) * PAGE_SIZE
     
-    # 1. جلب الأزرار الرئيسية ديناميكياً وترتيبها حسب السطر والترتيب الأفقي
-    main_buttons = execute_query(
-        "SELECT id, name, row_number FROM buttons WHERE parent_id IS NULL ORDER BY row_number ASC, sort_order ASC;", 
-        fetch=True
+    # 1. جلب إجمالي عدد الملفات المرتبطة بهذا الزر
+    count_res = execute_query("SELECT COUNT(*) FROM button_files WHERE button_id = %s;", (button_id,), fetch=True)
+    total_files = count_res[0][0] if count_res else 0
+    
+    if total_files == 0:
+        return False
+        
+    # حساب إجمالي عدد الصفحات
+    total_pages = (total_files + PAGE_SIZE - 1) // PAGE_SIZE
+    
+    # 2. جلب ملفات الصفحة الحالية فقط
+    files = execute_query(
+        "SELECT file_id, file_type FROM button_files WHERE button_id = %s ORDER BY id ASC LIMIT %s OFFSET %s;",
+        (button_id, PAGE_SIZE, offset), fetch=True
     )
     
-    # تجميع الأزرار المخصصة في أسطر بناءً على إعدادات الآدمن
-    rows = {}
-    for btn_id, btn_name, row_num in main_buttons:
-        if row_num not in rows:
-            rows[row_num] = []
-        rows[row_num].append(InlineKeyboardButton(text=btn_name, callback_data=f"open_{btn_id}"))
-        
-    # رص الأزرار الديناميكية أولاً في أعلى القائمة
-    for r in sorted(rows.keys()):
-        markup.row(*rows[r])
-        
-    # 2. إضافة الأزرار الإدارية الثابتة أسفل الأزرار الديناميكية بناءً على الصلاحيات
-    if perms.get('is_admin'):
-        row_buttons = []
-        
-        # أزرار الصلاحيات الفردية
-        if perms.get('can_settings'):
-            markup.add(InlineKeyboardButton(text="⚙️ الإعدادات الإدارية", callback_data="admin_settings"))
-        if perms.get('can_broadcast'):
-            markup.add(InlineKeyboardButton(text="📢 إرسال رسالة جماعية", callback_data="admin_broadcast"))
+    # يوزرنيم البوت الثابت كـ شرح وحيد للملفات الخارجة
+    bot_username = "@Sudanmedicinebot"
+    
+    # 3. إرسال الملفات للمستخدم مع الـ caption
+    for file_id, file_type in files:
+        try:
+            f_type = str(file_type).lower()
+            if f_type == 'document': bot.send_document(chat_id, file_id, caption=bot_username)
+            elif f_type == 'photo': bot.send_photo(chat_id, file_id, caption=bot_username)
+            elif f_type == 'audio': bot.send_audio(chat_id, file_id, caption=bot_username)
+            elif f_type == 'video': bot.send_video(chat_id, file_id, caption=bot_username)
+            elif f_type == 'voice': bot.send_voice(chat_id, file_id, caption=bot_username)
+            else: bot.send_document(chat_id, file_id, caption=bot_username) # احتياطي
+        except Exception as e:
+            print(f"Error sending file {file_id}: {str(e)}")
             
-        if perms.get('can_count'):
-            row_buttons.append(InlineKeyboardButton(text="📊 عدد المستخدمين", callback_data="admin_count_users"))
-        if perms.get('can_feedback'):
-            row_buttons.append(InlineKeyboardButton(text="📥 رسائل المستخدمين", callback_data="admin_view_feedback"))
+    # 4. دمج التحكم بالصفحات مع أزرار المجلد المستقبلة
+    markup = sub_menu_markup if sub_menu_markup is not None else types.InlineKeyboardMarkup()
+    
+    # إضافة زر "التالي ▶️" فقط إذا وُجدت صفحات تالية
+    if page < total_pages:
+        markup.row(types.InlineKeyboardButton(text="التالي ▶️", callback_data=f"files_{button_id}_{page+1}"))
+    
+    # بناء نص الرسالة الموحدة المكتملة
+    full_text = f"{base_text}\n\n📑 مجموعة الملفات: [ {page} من {total_pages} ]\n📦 إجمالي الملفات في هذا القسم: {total_files} ملف."
+    
+    bot.send_message(chat_id, full_text, reply_markup=markup)
+    return True
+
+
+# 🛠️ الدالة الرئيسية لتسجيل كل معالجات المستخدم (User Handlers)
+def register_user_handlers():
+
+    # 1. أمر البدء (المدخل الرئيسي المحدث)
+    @bot.message_handler(commands=['start'])
+    def cmd_start(message):
+        chat_id = message.chat.id
+        user_id = message.from_user.id
+        username = message.from_user.username or "NoUsername"
+        first_name = message.from_user.first_name or ""
+        last_name = message.from_user.last_name or ""
+
+        clear_user_state(user_id)
+
+        # التحقق أولاً: إذا لم يكن في القناة، أرسل رسالة الانضمام واقطع التنفيذ فوراً دون حفظه
+        if not is_user_in_batch(bot, user_id):
+            send_join_request_menu(bot, chat_id)
+            return
+
+        # الحفظ في قاعدة البيانات يتم هنا فقط بعد تخطي الفحص بنجاح
+        execute_query(
+            """
+            INSERT INTO users (user_id, username, first_name, last_name)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (user_id)
+            DO UPDATE SET 
+                username = EXCLUDED.username,
+                first_name = EXCLUDED.first_name,
+                last_name = EXCLUDED.last_name;
+            """,
+            (user_id, username, first_name, last_name),
+            commit=True
+        )
+
+        res = execute_query("SELECT phone_number FROM users WHERE user_id = %s;", (user_id,), fetch=True)
+        has_phone = bool(res and res[0][0])
+
+        if not has_phone:
+            ask_for_phone(chat_id, user_id)
+            return
+
+        show_main_menu(chat_id, user_id)
+
+    # 2. وظيفة طلب رقم الهاتف
+    def ask_for_phone(chat_id, user_id):
+        set_user_state(user_id, "WAITING_PHONE")
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        markup.add(types.KeyboardButton("📱 مشاركة رقم الهاتف", request_contact=True))
+        
+        bot.send_message(
+            chat_id,
+            "⚠️ أهلاً بك يا دكتور! لاستكمال استخدام البوت، يرجى مشاركة رقم هاتفك بالضغط على الزر أدناه 👇",
+            reply_markup=markup
+        )
+
+    # 3. معالجة إرسال الرقم
+    @bot.message_handler(func=check_state("WAITING_PHONE"), content_types=['contact'])
+    def process_phone_number(message):
+        user_id = message.from_user.id
+        if message.contact.user_id != user_id:
+            bot.reply_to(message, "❌ يرجى مشاركة رقم هاتفك الشخصي فقط.")
+            return
             
-        if row_buttons:
-            markup.row(*row_buttons)
+        phone_number = message.contact.phone_number
+        execute_query("UPDATE users SET phone_number = %s WHERE user_id = %s;", (phone_number, user_id), commit=True)
+        clear_user_state(user_id)
+        
+        bot.send_message(message.chat.id, "✅ تم تسجيل رقمك بنجاح. شكراً لك!", reply_markup=types.ReplyKeyboardRemove())
+        show_main_menu(message.chat.id, user_id)
+
+    # 4. زر التحقق من العضوية (المحدث لتسجيل البيانات عند النجاح)
+    @bot.callback_query_handler(func=lambda call: call.data == "check_membership")
+    def handle_check_membership(call):
+        user_id = call.from_user.id
+        chat_id = call.message.chat.id
+        
+        if is_user_in_batch(bot, user_id):
+            bot.answer_callback_query(call.id, "✅ تم التحقق من عضويتك!", show_alert=True)
             
-        # زر إدارة المشرفين يظهر للمالك فقط
-        if perms.get('is_owner') or user_id == OWNER_ID:
-            markup.add(InlineKeyboardButton(text="👥 إدارة المشرفين", callback_data="owner_manage_admins"))
-    
-    # زر مراسلة الإدارة الثابت للجميع (في آخر القائمة دائماً)
-    markup.add(InlineKeyboardButton(text="📬 مراسلة الإدارة", callback_data="user_contact"))
-    
-    return markup
+            try: bot.delete_message(chat_id, call.message.message_id)
+            except Exception: pass
+            
+            # بما أنه نجح بالتحقق الآن، نقوم بإدراج بياناته في قاعدة البيانات لأول مرة
+            username = call.from_user.username or "NoUsername"
+            first_name = call.from_user.first_name or ""
+            last_name = call.from_user.last_name or ""
+            
+            execute_query(
+                """
+                INSERT INTO users (user_id, username, first_name, last_name)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (user_id)
+                DO UPDATE SET 
+                    username = EXCLUDED.username,
+                    first_name = EXCLUDED.first_name,
+                    last_name = EXCLUDED.last_name;
+                """,
+                (user_id, username, first_name, last_name),
+                commit=True
+            )
+            
+            res = execute_query("SELECT phone_number FROM users WHERE user_id = %s;", (user_id,), fetch=True)
+            if not (res and res[0][0]):
+                ask_for_phone(chat_id, user_id)
+            else:
+                show_main_menu(chat_id, user_id)
+        else:
+            bot.answer_callback_query(call.id, "عذراً، أنت لست عضواً في كلية الطب من الدفعتين 35&36", show_alert=True)
 
 
-def make_sub_menu_markup(parent_id, is_admin=False):
-    markup = InlineKeyboardMarkup(row_width=2)
-    
-    # 1. جلب الأزرار الفرعية ديناميكياً وترتيبها حسب السطر والترتيب الأفقي
-    sub_buttons = execute_query(
-        "SELECT id, name, row_number FROM buttons WHERE parent_id = %s ORDER BY row_number ASC, sort_order ASC;", 
-        (parent_id,), fetch=True
-    )
-    
-    # تجميع الأزرار الفرعية المخصصة في أسطر
-    rows = {}
-    for btn_id, btn_name, row_num in sub_buttons:
-        if row_num not in rows:
-            rows[row_num] = []
-        rows[row_num].append(InlineKeyboardButton(text=btn_name, callback_data=f"open_{btn_id}"))
+    # 5. عرض القائمة الرئيسية (الحارس المركزي للمنيو)
+    def show_main_menu(chat_id, user_id):
+        # التحقق من انضمام المستخدم للدفعة
+        if not is_user_in_batch(bot, user_id):
+            send_join_request_menu(bot, chat_id)
+            return
+
+        # جلب الصلاحيات وبناء القائمة
+        perms = get_permissions(user_id)
         
-    # رص الأزرار الفرعية الديناميكية
-    for r in sorted(rows.keys()):
-        markup.row(*rows[r])
+        text = """🏛️ القائمة الرئيسية
+
+﴿يَرْفَعِ اللَّهُ الَّذِينَ آمَنُوا مِنكُمْ وَالَّذِينَ أُوتُوا الْعِلْمَ دَرَجَاتٍ﴾
+📖 سورة المجادلة: 11"""
+
+        bot.send_message(chat_id, text, reply_markup=make_main_menu_markup(perms, user_id))
         
-    # 2. زر العودة الذكي للخلف (يظهر دائماً في الأسفل)
-    parent_info = execute_query("SELECT parent_id FROM buttons WHERE id = %s;", (parent_id,), fetch=True)
-    back_id = parent_info[0][0] if parent_info else None
-    
-    back_callback = f"open_{back_id}" if back_id is not None else "main_menu"
-    markup.add(InlineKeyboardButton(text="🔙 عودة للخلف", callback_data=back_callback))
-    
-    return markup
 
-
-def make_admin_settings_markup():
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        InlineKeyboardButton(text="➕ إضافة زر جديد", callback_data="adm_add_btn"),
-        InlineKeyboardButton(text="❌ حذف زر", callback_data="adm_del_btn"),
-        InlineKeyboardButton(text="✏️ تعديل زر", callback_data="adm_edit_btn"),
-        InlineKeyboardButton(text="🔙 العودة للقائمة الرئيسية", callback_data="main_menu")
-    )
-    return markup
-
-
-def make_admin_edit_options_markup(button_id):
-    markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        InlineKeyboardButton(text="✏️ تعديل الاسم", callback_data=f"editopt_name_{button_id}"),
-        InlineKeyboardButton(text="📝 تعديل الرسالة النصية", callback_data=f"editopt_msg_{button_id}")
-    )
-    markup.add(
-        InlineKeyboardButton(text="🔄 نقل الزر لمكان آخر", callback_data=f"editopt_move_{button_id}"),
-        InlineKeyboardButton(text="📁 إدارة ملفات الزر", callback_data=f"editopt_files_{button_id}")
-    )
-    markup.add(InlineKeyboardButton(text="🔙 العودة للإعدادات", callback_data="admin_settings"))
-    return markup
-
-
-def make_admin_choose_parent_markup(button_name, exclude_id=None):
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(InlineKeyboardButton(text="📁 في القائمة الرئيسية مباشرة", callback_data=f"setparent_new_{button_name}_null"))
-    
-    if exclude_id:
-        all_buttons = execute_query("SELECT id, name FROM buttons WHERE id != %s ORDER BY id ASC;", (exclude_id,), fetch=True)
-    else:
-        all_buttons = execute_query("SELECT id, name FROM buttons ORDER BY id ASC;", fetch=True)
+    # 6. العودة للمنيو الرئيسي
+    @bot.callback_query_handler(func=lambda call: call.data == "main_menu")
+    def cb_main_menu(call):
+        chat_id = call.message.chat.id
         
-    for b_id, b_name in all_buttons:
-        markup.add(InlineKeyboardButton(text=f"📁 داخل [ {b_name} ]", callback_data=f"setparent_new_{button_name}_{b_id}"))
+        try: bot.delete_message(chat_id, call.message.message_id)
+        except Exception: pass
+                
+        show_main_menu(chat_id, call.from_user.id)
+        bot.answer_callback_query(call.id)
+
+    # 📁 دالة فتح المجلد الذكية
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
+    def cb_open_folder(call):
+        bot.answer_callback_query(call.id)
+        user_id = call.from_user.id
+        chat_id = call.message.chat.id
+        parts = call.data.split("_")
+        btn_id = int(parts[1])
         
-    return markup
+        try:
+            btn_info = execute_query("SELECT name, message_text FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
+            if not btn_info: 
+                bot.send_message(chat_id, "⚠️ عذراً، هذا القسم غير موجود أو تم حذفه مسبقاً.")
+                return
+            btn_name, msg_text = btn_info[0]
+            perms = get_permissions(user_id)
+            
+            base_text = f"📂 {btn_name}\n\n{msg_text or ''}"
+            sub_markup = make_sub_menu_markup(btn_id, perms["is_admin"])
+            
+            count_res = execute_query("SELECT COUNT(*) FROM button_files WHERE button_id = %s;", (btn_id,), fetch=True)
+            total_files = count_res[0][0] if count_res else 0
+            
+            if total_files > 0:
+                try: bot.delete_message(chat_id, call.message.message_id)
+                except Exception: pass
+                
+                send_button_files_page(chat_id, btn_id, page=1, sub_menu_markup=sub_markup, base_text=base_text)
+            else:
+                try:
+                    bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=call.message.message_id,
+                        text=base_text,
+                        reply_markup=sub_markup
+                    )
+                except Exception:
+                    pass
+            
+        except Exception as e:
+            print(f"❌ خطأ داخل دالة cb_open_folder: {e}")
 
-
-def make_admin_move_button_markup(button_id):
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(InlineKeyboardButton(text="📁 نقل إلى القائمة الرئيسية", callback_data=f"exec_move_{button_id}_null"))
-    
-    other_buttons = execute_query("SELECT id, name FROM buttons WHERE id != %s ORDER BY id ASC;", (button_id,), fetch=True)
-    for ob_id, ob_name in other_buttons:
-        markup.add(InlineKeyboardButton(text=f"📁 داخل [ {ob_name} ]", callback_data=f"exec_move_{button_id}_{ob_id}"))
+    # 🔙 معالج الرجوع الآمن والتعديل الفوري
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("back_"))
+    def cb_back(call):
+        bot.answer_callback_query(call.id)
+        chat_id = call.message.chat.id
+        user_id = call.from_user.id
         
-    markup.add(InlineKeyboardButton(text="🔙 إلغاء ونكوص", callback_data=f"choose_edit_{button_id}"))
-    return markup
+        parent = call.data.split("_")[1]
+        if parent == "None" or parent == "0":
+            try: bot.delete_message(chat_id, call.message.message_id)
+            except Exception: pass
+            show_main_menu(chat_id, user_id)
+            return
+            
+        parent_id = int(parent)
+        perms = get_permissions(user_id)
 
+        btn = execute_query("SELECT name, message_text FROM buttons WHERE id=%s;", (parent_id,), fetch=True)
+        if not btn:
+            try: bot.delete_message(chat_id, call.message.message_id)
+            except Exception: pass
+            show_main_menu(chat_id, user_id)
+            return
 
-def make_admin_file_manager_markup(button_id):
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(InlineKeyboardButton(text="➕ إضافة ملف جديد لهذا الزر", callback_data=f"addfile_{button_id}"))
-    
-    files = execute_query("SELECT id, file_type FROM button_files WHERE button_id = %s ORDER BY id ASC;", (button_id,), fetch=True)
-    for f_record_id, f_type in files:
-        markup.add(InlineKeyboardButton(text=f"🗑 حذف ملف ({f_type})", callback_data=f"delfile_{f_record_id}_{button_id}"))
+        btn_name, msg_text = btn[0]
+        base_text = f"📂 {btn_name}\n\n{msg_text or ''}"
+        parent_markup = make_sub_menu_markup(parent_id, perms["is_admin"])
+
+        try:
+            bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                text=base_text,
+                reply_markup=parent_markup
+            )
+        except Exception:
+            try: bot.delete_message(chat_id, call.message.message_id)
+            except Exception: pass
+            bot.send_message(chat_id, base_text, reply_markup=parent_markup)
+
+    # 🔄 معالج أزرار التنقل
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("files_"))
+    def cb_files_pagination(call):
+        bot.answer_callback_query(call.id)
+        user_id = call.from_user.id
+        chat_id = call.message.chat.id
+        parts = call.data.split("_")
+        btn_id = int(parts[1])
+        page = int(parts[2])
         
-    markup.add(InlineKeyboardButton(text="🔙 عودة لخصائص الزر", callback_data=f"choose_edit_{button_id}"))
-    return markup
+        try: bot.delete_message(chat_id=chat_id, message_id=call.message.message_id)
+        except Exception: pass
+                
+        try:
+            btn_info = execute_query("SELECT name, message_text FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
+            if btn_info:
+                btn_name, msg_text = btn_info[0]
+                base_text = f"📂 {btn_name}\n\n{msg_text or ''}"
+                perms = get_permissions(user_id)
+                sub_markup = make_sub_menu_markup(btn_id, perms["is_admin"])
+                
+                send_button_files_page(chat_id, btn_id, page=page, sub_menu_markup=sub_markup, base_text=base_text)
+        except Exception as e:
+            print(f"Error in pagination: {e}")
+        
+    @bot.callback_query_handler(func=lambda call: call.data == "user_contact")
+    def cb_user_contact(call):
+        chat_id = call.message.chat.id
+        set_user_state(call.from_user.id, "WAITING_FEEDBACK_MSG")
+        try:
+            bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text="📝 اكتب استفسارك هنا:")
+        except Exception:
+            pass
+        bot.answer_callback_query(call.id)
 
+    # 7. معالجة الرسالة وإرسالها للإدارة
+    @bot.message_handler(func=check_state("WAITING_FEEDBACK_MSG"), content_types=["text"])
+    def handle_feedback(message):
+        user_id = message.from_user.id
+        user_text = message.text
+        
+        execute_query("INSERT INTO feedback (user_id, username, message_text) VALUES (%s, %s, %s);", 
+                      (user_id, message.from_user.username or "N/A", user_text), commit=True)
+        
+        user_info = execute_query("SELECT first_name, last_name, phone_number FROM users WHERE user_id = %s;", 
+                                  (user_id,), fetch=True)
+        
+        f_name, l_name, phone = ("", "", "غير مسجل")
+        if user_info:
+            f_name, l_name, phone = user_info[0]
 
-def make_owner_manage_admins_markup():
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        InlineKeyboardButton(text="➕ إضافة مشرف جديد", callback_data="owner_add_admin"),
-        InlineKeyboardButton(text="🗑️ إزالة مشرف وسحب الصلاحيات", callback_data="owner_remove_admin_list"),
-        InlineKeyboardButton(text="🔙 العودة للقائمة الرئيسية", callback_data="main_menu")
-    )
-    return markup
+        admin_notification = (
+            f"📬 رسالة جديدة من المستخدم:\n\n"
+            f"👤 الاسم: {f_name} {l_name}\n"
+            f"🆔 ID: {user_id}\n"
+            f"📱 الهاتف: {phone}\n"
+            f"🔗 المعرف: @{message.from_user.username or 'لا يوجد'}\n\n"
+            f"📄 المحتوى:\n{user_text}"
+        )
 
+        notify_ids = {OWNER_ID} if OWNER_ID else set()
+        db_admins = execute_query("SELECT admin_id FROM admins WHERE can_feedback = TRUE;", fetch=True)
+        for (adm_id,) in db_admins: notify_ids.add(adm_id)
+        for static_adm in ADMIN_IDS: notify_ids.add(static_adm)
 
-def make_remove_admin_list_markup():
-    markup = InlineKeyboardMarkup(row_width=1)
-    admins = execute_query("SELECT admin_id FROM admins;", fetch=True)
-    for (adm_id,) in admins:
-        markup.add(InlineKeyboardButton(text=f"❌ إزالة المشرف ({adm_id})", callback_data=f"exec_remove_admin_{adm_id}"))
-    markup.add(InlineKeyboardButton(text="🔙 عودة", callback_data="owner_manage_admins"))
-    return markup
+        for admin_id in notify_ids:
+            try: bot.send_message(admin_id, admin_notification)
+            except: pass
 
-
-def make_permissions_markup(perms_dict, new_admin_id):
-    markup = InlineKeyboardMarkup(row_width=1)
-    
-    settings_status = "✅" if perms_dict.get('settings') else "❌"
-    broadcast_status = "✅" if perms_dict.get('broadcast') else "❌"
-    feedback_status = "✅" if perms_dict.get('feedback') else "❌"
-    count_status = "✅" if perms_dict.get('count') else "❌"
-    
-    markup.add(
-        InlineKeyboardButton(text=f"{settings_status} صلاحية الإعدادات الإدارية", callback_data=f"toggle_settings_{new_admin_id}"),
-        InlineKeyboardButton(text=f"{broadcast_status} صلاحية إرسال رسالة جماعية", callback_data=f"toggle_broadcast_{new_admin_id}"),
-        InlineKeyboardButton(text=f"{feedback_status} صلاحية رسائل المستخدمين", callback_data=f"toggle_feedback_{new_admin_id}"),
-        InlineKeyboardButton(text=f"{count_status} صلاحية عدد المستخدمين", callback_data=f"toggle_count_{new_admin_id}"),
-        InlineKeyboardButton(text="⚡ منح جميع الصلاحيات", callback_data=f"toggle_all_{new_admin_id}"),
-        InlineKeyboardButton(text="💾 حفظ وإضافة المشرف", callback_data=f"save_admin_{new_admin_id}"),
-        InlineKeyboardButton(text="🔙 إلغاء والعودة", callback_data="owner_manage_admins")
-    )
-    return markup
-                                    
+        clear_user_state(user_id)
+        bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
+        
+        show_main_menu(message.chat.id, user_id)
+        
