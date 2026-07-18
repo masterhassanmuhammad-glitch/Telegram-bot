@@ -352,4 +352,44 @@ def register_user_handlers():
         bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
         
         show_main_menu(message.chat.id, user_id)
+
+def send_button_files(chat_id, button_id):
+    # 1. جلب جميع الملفات المرتبطة بهذا الزر من جدول Neon
+    query = "SELECT file_id, file_type FROM button_files WHERE button_id = %s ORDER BY id ASC;"
+    files = execute_query(query, (button_id,), fetch=True)
+    
+    # إذا لم يكن هناك ملفات مرتبطة بالزر
+    if not files:
+        bot.send_message(chat_id, "⚠️ لا توجد ملفات متوفرة في هذا القسم حالياً.")
+        return
+
+    # يوزرنيم البوت الخاص بك ليظهر كـ Caption وحيد للملفات
+    bot_username = "@Sudanmedicinebot" 
+
+    # 2. المرور على الملفات وإرسالها بناءً على الـ file_type المنسق في الجدول
+    for file_id, file_type in files:
+        try:
+            # تحويل النوع لنص صغير تفادياً للأخطاء
+            f_type = str(file_type).lower()
+            
+            if f_type in ['document', 'pdf', 'zip', 'rar']:
+                bot.send_document(chat_id, file_id, caption=bot_username)
+                
+            elif f_type in ['photo', 'image', 'png', 'jpg']:
+                bot.send_photo(chat_id, file_id, caption=bot_username)
+                
+            elif f_type in ['video', 'mp4']:
+                bot.send_video(chat_id, file_id, caption=bot_username)
+                
+            elif f_type in ['audio', 'mp3']:
+                bot.send_audio(chat_id, file_id, caption=bot_username)
+                
+            else:
+                # خيار احتياطي إذا كان النوع غير معروف في الجدول
+                bot.send_document(chat_id, file_id, caption=bot_username)
+                
+        except Exception as e:
+            # طباعة الخطأ في التيرمنال للمراقبة دون توقيف البوت
+            print(f"خطأ أثناء إرسال الملف ذو المعرف {file_id}: {e}")
+            
         
