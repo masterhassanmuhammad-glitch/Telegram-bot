@@ -13,7 +13,7 @@ from keyboards import make_main_menu_markup, make_sub_menu_markup
 PAGE_SIZE = 10  # عدد الملفات في كل صفحة
 
 
-# 📑 الدالة المساعدة لإرسال الملفات باليوزرنيم فقط دون أي تعديل آخر على النظام الأصلي
+# 📑 الدالة المساعدة لإرسال الملفات ودمج أزرار التحكم في رسالة موحدة بالأسفل
 def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, base_text=""):
     offset = (page - 1) * PAGE_SIZE
     
@@ -33,19 +33,14 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
         (button_id, PAGE_SIZE, offset), fetch=True
     )
     
-    # يوزرنيم البوت الثابت كـ شرح للملفات الخارجة
-    bot_username = "@Sudanmedicinebot"
-    
-    # 3. إرسال الملفات للمستخدم مع الـ caption
+    # 3. إرسال الملفات للمستخدم أولاً
     for file_id, file_type in files:
         try:
-            f_type = str(file_type).lower()
-            if f_type == 'document': bot.send_document(chat_id, file_id, caption=bot_username)
-            elif f_type == 'photo': bot.send_photo(chat_id, file_id, caption=bot_username)
-            elif f_type == 'audio': bot.send_audio(chat_id, file_id, caption=bot_username)
-            elif f_type == 'video': bot.send_video(chat_id, file_id, caption=bot_username)
-            elif f_type == 'voice': bot.send_voice(chat_id, file_id, caption=bot_username)
-            else: bot.send_document(chat_id, file_id, caption=bot_username)
+            if file_type == 'document': bot.send_document(chat_id, file_id)
+            elif file_type == 'photo': bot.send_photo(chat_id, file_id)
+            elif file_type == 'audio': bot.send_audio(chat_id, file_id)
+            elif file_type == 'video': bot.send_video(chat_id, file_id)
+            elif file_type == 'voice': bot.send_voice(chat_id, file_id)
         except Exception as e:
             print(f"Error sending file {file_id}: {str(e)}")
             
@@ -66,7 +61,7 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
 # 🛠️ الدالة الرئيسية لتسجيل كل معالجات المستخدم (User Handlers)
 def register_user_handlers():
 
-    # 1. أمر البدء
+    # 1. أمر البدء (المدخل الرئيسي المحدث)
     @bot.message_handler(commands=['start'])
     def cmd_start(message):
         chat_id = message.chat.id
@@ -77,10 +72,12 @@ def register_user_handlers():
 
         clear_user_state(user_id)
 
+        # التحقق أولاً: إذا لم يكن في القناة، أرسل رسالة الانضمام واقطع التنفيذ فوراً دون حفظه
         if not is_user_in_batch(bot, user_id):
             send_join_request_menu(bot, chat_id)
             return
 
+        # الحفظ في قاعدة البيانات يتم هنا فقط بعد تخطي الفحص بنجاح
         execute_query(
             """
             INSERT INTO users (user_id, username, first_name, last_name)
@@ -131,7 +128,7 @@ def register_user_handlers():
         bot.send_message(message.chat.id, "✅ تم تسجيل رقمك بنجاح. شكراً لك!", reply_markup=types.ReplyKeyboardRemove())
         show_main_menu(message.chat.id, user_id)
 
-    # 4. زر التحقق من العضوية
+    # 4. زر التحقق من العضوية (المحدث لتسجيل البيانات عند النجاح)
     @bot.callback_query_handler(func=lambda call: call.data == "check_membership")
     def handle_check_membership(call):
         user_id = call.from_user.id
@@ -143,6 +140,7 @@ def register_user_handlers():
             try: bot.delete_message(chat_id, call.message.message_id)
             except Exception: pass
             
+            # بما أنه نجح بالتحقق الآن، نقوم بإدراج بياناته في قاعدة البيانات لأول مرة
             username = call.from_user.username or "NoUsername"
             first_name = call.from_user.first_name or ""
             last_name = call.from_user.last_name or ""
@@ -169,17 +167,25 @@ def register_user_handlers():
         else:
             bot.answer_callback_query(call.id, "عذراً، أنت لست عضواً في كلية الطب من الدفعتين 35&36", show_alert=True)
 
-    # 5. عرض القائمة الرئيسية
+
+    # 5. عرض القائمة الرئيسية (الحارس المركزي للمنيو)
     def show_main_menu(chat_id, user_id):
+        # التحقق من انضمام المستخدم للدفعة
         if not is_user_in_batch(bot, user_id):
             send_join_request_menu(bot, chat_id)
             return
 
+        # جلب الصلاحيات وبناء القائمة
         perms = get_permissions(user_id)
         
-        text = """🏛️ القائمة الرئيسية\n\n﴿يَرْفَعِ اللَّهُ الَّذِينَ آمَنُوا مِنكُمْ وَالَّذِينَ أُوتُوا الْعِلْمَ دَرَجَاتٍ﴾\n📖 سورة المجادلة: 11"""
+        text = """🏛️ القائمة الرئيسية
+
+﴿يَرْفَعِ اللَّهُ الَّذِينَ آمَنُوا مِنكُمْ وَالَّذِينَ أُوتُوا الْعِلْمَ دَرَجَاتٍ﴾
+📖 سورة المجادلة: 11"""
+
         bot.send_message(chat_id, text, reply_markup=make_main_menu_markup(perms, user_id))
         
+
     # 6. العودة للمنيو الرئيسي
     @bot.callback_query_handler(func=lambda call: call.data == "main_menu")
     def cb_main_menu(call):
@@ -191,7 +197,7 @@ def register_user_handlers():
         show_main_menu(chat_id, call.from_user.id)
         bot.answer_callback_query(call.id)
 
-    # 📁 دالة فتح المجلد الأصلية تماماً (حذف فوري ثم إرسال)
+    # 📁 دالة فتح المجلد الذكية
     @bot.callback_query_handler(func=lambda call: call.data.startswith("open_"))
     def cb_open_folder(call):
         bot.answer_callback_query(call.id)
@@ -214,19 +220,26 @@ def register_user_handlers():
             count_res = execute_query("SELECT COUNT(*) FROM button_files WHERE button_id = %s;", (btn_id,), fetch=True)
             total_files = count_res[0][0] if count_res else 0
             
-            # الحذف الفوري المباشر كما كان سابقاً تماماً
-            try: bot.delete_message(chat_id, call.message.message_id)
-            except Exception: pass
-
             if total_files > 0:
+                try: bot.delete_message(chat_id, call.message.message_id)
+                except Exception: pass
+                
                 send_button_files_page(chat_id, btn_id, page=1, sub_menu_markup=sub_markup, base_text=base_text)
             else:
-                bot.send_message(chat_id, base_text, reply_markup=sub_markup)
+                try:
+                    bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=call.message.message_id,
+                        text=base_text,
+                        reply_markup=sub_markup
+                    )
+                except Exception:
+                    pass
             
         except Exception as e:
             print(f"❌ خطأ داخل دالة cb_open_folder: {e}")
 
-    # 🔙 معالج الرجوع الأصلي (حذف فوري ثم إرسال)
+    # 🔙 معالج الرجوع الآمن والتعديل الفوري
     @bot.callback_query_handler(func=lambda call: call.data.startswith("back_"))
     def cb_back(call):
         bot.answer_callback_query(call.id)
@@ -254,11 +267,19 @@ def register_user_handlers():
         base_text = f"📂 {btn_name}\n\n{msg_text or ''}"
         parent_markup = make_sub_menu_markup(parent_id, perms["is_admin"])
 
-        try: bot.delete_message(chat_id, call.message.message_id)
-        except Exception: pass
-        bot.send_message(chat_id, base_text, reply_markup=parent_markup)
+        try:
+            bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                text=base_text,
+                reply_markup=parent_markup
+            )
+        except Exception:
+            try: bot.delete_message(chat_id, call.message.message_id)
+            except Exception: pass
+            bot.send_message(chat_id, base_text, reply_markup=parent_markup)
 
-    # 🔄 معالج أزرار التنقل الأصلي (حذف فوري ثم إرسال)
+    # 🔄 معالج أزرار التنقل
     @bot.callback_query_handler(func=lambda call: call.data.startswith("files_"))
     def cb_files_pagination(call):
         bot.answer_callback_query(call.id)
@@ -287,9 +308,10 @@ def register_user_handlers():
     def cb_user_contact(call):
         chat_id = call.message.chat.id
         set_user_state(call.from_user.id, "WAITING_FEEDBACK_MSG")
-        try: bot.delete_message(chat_id, call.message.message_id)
-        except Exception: pass
-        bot.send_message(chat_id, "📝 اكتب استفسارك هنا:")
+        try:
+            bot.edit_message_text(chat_id=chat_id, message_id=call.message.message_id, text="📝 اكتب استفسارك هنا:")
+        except Exception:
+            pass
         bot.answer_callback_query(call.id)
 
     # 7. معالجة الرسالة وإرسالها للإدارة
@@ -330,4 +352,4 @@ def register_user_handlers():
         bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
         
         show_main_menu(message.chat.id, user_id)
-            
+        
