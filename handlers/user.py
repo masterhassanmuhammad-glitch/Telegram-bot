@@ -1,3 +1,4 @@
+from types import InlineKeyboardMarkup, InlineKeyboardButton
 from telebot import types
 from .helpers import (
     is_user_in_batch,
@@ -33,14 +34,14 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
         (button_id, PAGE_SIZE, offset), fetch=True
     )
     
-    # 3. إرسال الملفات للمستخدم أولاً
+    # 3. إرسال الملفات للمستخدم أولاً مع إضافة اليوزرنيم
     for file_id, file_type in files:
         try:
-            if file_type == 'document': bot.send_document(chat_id, file_id)
-            elif file_type == 'photo': bot.send_photo(chat_id, file_id)
-            elif file_type == 'audio': bot.send_audio(chat_id, file_id)
-            elif file_type == 'video': bot.send_video(chat_id, file_id)
-            elif file_type == 'voice': bot.send_voice(chat_id, file_id)
+            if file_type == 'document': bot.send_document(chat_id, file_id, caption="@Sudanmedicinebot")
+            elif file_type == 'photo': bot.send_photo(chat_id, file_id, caption="@Sudanmedicinebot")
+            elif file_type == 'audio': bot.send_audio(chat_id, file_id, caption="@Sudanmedicinebot")
+            elif file_type == 'video': bot.send_video(chat_id, file_id, caption="@Sudanmedicinebot")
+            elif file_type == 'voice': bot.send_voice(chat_id, file_id, caption="@Sudanmedicinebot")
         except Exception as e:
             print(f"Error sending file {file_id}: {str(e)}")
             
@@ -352,4 +353,4 @@ def register_user_handlers():
         bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
         
         show_main_menu(message.chat.id, user_id)
-        
+                        
