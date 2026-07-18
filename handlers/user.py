@@ -13,7 +13,7 @@ from keyboards import make_main_menu_markup, make_sub_menu_markup
 PAGE_SIZE = 10  # عدد الملفات في كل صفحة
 
 
-# 📑 الدالة المساعدة لإرسال الملفات ودمج أزرار التحكم في رسالة موحدة بالأسفل
+# 📑 الدالة المساعدة لإرسال الملفات المحدثة باليوزرنيم ودمج أزرار التحكم
 def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, base_text=""):
     offset = (page - 1) * PAGE_SIZE
     
@@ -33,14 +33,19 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
         (button_id, PAGE_SIZE, offset), fetch=True
     )
     
-    # 3. إرسال الملفات للمستخدم أولاً
+    # يوزرنيم البوت الثابت كـ شرح وحيد للملفات الخارجة
+    bot_username = "@Sudanmedicinebot"
+    
+    # 3. إرسال الملفات للمستخدم مع الـ caption
     for file_id, file_type in files:
         try:
-            if file_type == 'document': bot.send_document(chat_id, file_id)
-            elif file_type == 'photo': bot.send_photo(chat_id, file_id)
-            elif file_type == 'audio': bot.send_audio(chat_id, file_id)
-            elif file_type == 'video': bot.send_video(chat_id, file_id)
-            elif file_type == 'voice': bot.send_voice(chat_id, file_id)
+            f_type = str(file_type).lower()
+            if f_type == 'document': bot.send_document(chat_id, file_id, caption=bot_username)
+            elif f_type == 'photo': bot.send_photo(chat_id, file_id, caption=bot_username)
+            elif f_type == 'audio': bot.send_audio(chat_id, file_id, caption=bot_username)
+            elif f_type == 'video': bot.send_video(chat_id, file_id, caption=bot_username)
+            elif f_type == 'voice': bot.send_voice(chat_id, file_id, caption=bot_username)
+            else: bot.send_document(chat_id, file_id, caption=bot_username) # احتياطي
         except Exception as e:
             print(f"Error sending file {file_id}: {str(e)}")
             
@@ -352,4 +357,4 @@ def register_user_handlers():
         bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
         
         show_main_menu(message.chat.id, user_id)
-        
+            
