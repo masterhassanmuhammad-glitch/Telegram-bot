@@ -415,4 +415,109 @@ def register_admin_handlers():
         parent_id = None if parent_raw == "null" else int(parent_raw)
         execute_query("UPDATE buttons SET parent_id = %s WHERE id = %s;", (parent_id, btn_id), commit=True)
         bot.answer_callback_query(call.id, "✅ تم نقل الزر بنجاح وتحديث الشجرة!", show_alert=True)
-    
+        bot.edit_message_text(
+            chat_id=user_id, message_id=call.message.message_id,
+            text="🛠 تم تحديث موضع الزر بنجاح. ما الذي ترغب بفعله الآن؟",
+            reply_markup=make_admin_edit_options_markup(btn_id)
+        )
+
+    # إدارة ملفات الزر
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("editopt_files_"))
+    def cb_manage_files(call):
+        user_id = call.from_user.id
+        perms = get_permissions(user_id)
+        if not is_admin_or_alert(call, perms, 'can_settings'): return
+        btn_id = int(call.data.split("_")[2])
+        bot.edit_message_text(
+            chat_id=user_id, message_id=call.message.message_id,
+            text="📁 قائمة الملفات المربوطة بهذا الزر حالياً. يمكنك تعديلها:",
+            reply_markup=make_admin_file_manager_markup(btn_id)
+        )
+        bot.answer_callback_query(call.id)
+
+    # ==========================================
+    # ميزة الرفع المتعدد للملفات (تحديث تفاعلي)
+    # ==========================================
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("addfile_"))
+    def cb_add_file_init(call):
+        user_id = call.from_user.id
+        perms = get_permissions(user_id)
+        if not is_admin_or_alert(call, perms, 'can_settings'): return
+        btn_id = int(call.data.split("_")[1])
+        
+        set_user_state(user_id, "WAITING_ADD_FILE", {"button_id": btn_id})
+        
+        # كيبورد يحتوي على زر الحفظ والإنهاء
+        save_markup = telebot.types.InlineKeyboardMarkup()
+        save_markup.add(telebot.types.InlineKeyboardButton(text="💾 حفظ وإنهاء الرفع", callback_data="save_uploaded_files"))
+        
+        bot.edit_message_text(
+            chat_id=user_id, message_id=call.message.message_id,
+            text="📤 أرسل الآن الملفات التي تريد ربطه بالزر (يمكنك إرسال أي عدد من الملفات متتالية).\n\n📌 عند الانتهاء تماماً، اضغط على زر الحفظ بالأسفل 👇:",
+            reply_markup=save_markup
+        )
+        bot.answer_callback_query(call.id)
+
+    @bot.message_handler(func=check_state("WAITING_ADD_FILE"), content_types=['document', 'photo', 'audio', 'video', 'voice'])
+    def process_add_file(message):
+        user_id = message.from_user.id
+        perms = get_permissions(user_id)
+        if not perms['can_settings']:
+            clear_user_state(user_id)
+            return
+        state, data = get_user_state(user_id)
+        btn_id = data.get('button_id')
+        file_id = None
+        file_type = None
+        
+        if message.content_type == 'document':
+            file_id = message.document.file_id
+            file_type = 'document'
+        elif message.content_type == 'photo':
+            file_id = message.photo[-1].file_id
+            file_type = 'photo'
+        elif message.content_type == 'audio':
+            file_id = message.audio.file_id
+            file_type = 'audio'
+        elif message.content_type == 'video':
+            file_id = message.video.file_id
+            file_type = 'video'
+        elif message.content_type == 'voice':
+            file_id = message.voice.file_id
+            file_type = 'voice'
+            
+        if file_id:
+            # تم التعديل هنا: استخدام جدول button_files لحفظ الملفات المرفوعة بشكل سليم
+            execute_query("INSERT INTO button_files (button_id, file_id, file_type) VALUES (%s, %s, %s);", (btn_id, file_id, file_type), commit=True)
+            
+            save_markup = telebot.types.InlineKeyboardMarkup()
+            save_markup.add(telebot.types.InlineKeyboardButton(text="💾 حفظ وإنهاء الرفع", callback_data="save_uploaded_files"))
+            
+            # نرسل إشعار نجاح دون تصفير الجلسة للسماح بملف آخر
+            bot.send_message(
+                user_id, 
+                "➕ تم استقبال الملف بنجاح!\n\nيمكنك الاستمرار بإرسال ملف آخر فوراً، أو اضغط على (حفظ وإنهاء الرفع) بالأسفل عند الاكتفاء 👇.",
+                reply_markup=save_markup
+            )
+        else:
+            bot.send_message(user_id, "❌ نوع الملف غير مدعوم أو فشل الرفع.")
+
+    # معالج إنهاء جلسة الرفع وحفظ الملفات بالكامل
+    @bot.callback_query_handler(func=lambda call: call.data == "save_uploaded_files")
+    def cb_save_uploaded_files(call):
+        user_id = call.from_user.id
+        state, data = get_user_state(user_id)
+        
+        if state != "WAITING_ADD_FILE":
+            bot.answer_callback_query(call.id, "⚠️ انتهت جلسة الرفع بالفعل أو تم الحفظ مسبقاً.", show_alert=True)
+            return
+            
+        btn_id = data.get('button_id')
+        clear_user_state(user_id)
+        
+        bot.answer_callback_query(call.id, "💾 تم حفظ وإدراج جميع الملفات بنجاح!", show_alert=True)
+        bot.send_message(
+            user_id, 
+            "✅ تم إنهاء الجلسة وتحديث محتويات المجلد بنجاح. يمكنك المراجعة الآن:",
+            reply_markup=make_admin_edit_options_markup(btn_id)
+        )
