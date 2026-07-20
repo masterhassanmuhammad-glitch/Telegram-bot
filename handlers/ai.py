@@ -1,9 +1,9 @@
 # handlers/ai.py
 import config
-from google import genai
-from config import GEMINI_API_KEY
+from groq import Groq
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+# تهيئة عميل Groq باستخدام المفتاح
+client = Groq(api_key=getattr(config, 'GROQ_API_KEY', None))
 
 def register_ai_handlers():
     @config.bot.message_handler(commands=['ask'])
@@ -21,32 +21,38 @@ def register_ai_handlers():
             
         processing_msg = config.bot.reply_to(
             message, 
-            "🩺 **جاري تحليل السؤال وإعداد الإجابة العلمية...**", 
+            "🩺 **جاري تحليل السؤال عبر ذكاء Groq السريع...**", 
             parse_mode="Markdown"
         )
         
         try:
-            prompt = (
-                "أنت مساعد أكاديمي ذكي لطلاب كلية الطب. "
-                "قدم إجابة علمية دقيقة، منظمة، وواضحة باللغة العربية بناءً على السؤال التالي:\n\n"
-                f"{query}"
+            # إرسال الطلب باستخدام نموذج Llama 3.3 القوي
+            completion = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "أنت مساعد أكاديمي ذكي لطلاب كلية الطب. قدم إجابة علمية دقيقة، منظمة، وواضحة تماماً باللغة العربية."
+                    },
+                    {
+                        "role": "user",
+                        "content": query
+                    }
+                ],
+                temperature=0.7,
             )
             
-            # تحديث اسم النمط إلى النسخة المدعومة حديثاً
-            response = client.models.generate_content(
-                model='gemini-2.0-flash',
-                contents=prompt,
-            )
+            answer = completion.choices[0].message.content
             
             config.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=processing_msg.message_id,
-                text=f"🤖 **إجابة المساعد الذكي:**\n\n{response.text}",
+                text=f"🤖 **إجابة المساعد الذكي:**\n\n{answer}",
                 parse_mode="Markdown"
             )
             
         except Exception as e:
-            print(f"[AI Error] {e}")
+            print(f"[Groq AI Error] {e}")
             config.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=processing_msg.message_id,
