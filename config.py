@@ -47,6 +47,7 @@ threading.Thread(target=run_health_server, daemon=True).start()
 
 # تعريف معرف المالك (أول ID يتم وضعه في قائمة المشرفين بمتغيرات البيئة)
 OWNER_ID = ADMIN_IDS[0] if ADMIN_IDS else None
-GEMINI_API_KEY = "AIzaSyAP6rPa5IT9oWiPhbmLiazPflGFjuNZBMI"
+# config.py
+GROQ_API_KEY = "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"
 
 
