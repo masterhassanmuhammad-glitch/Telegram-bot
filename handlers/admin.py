@@ -1,4 +1,4 @@
-print("DEBUG: الملف admin.py تم تحميله بنجاح مع دعم التنسيق الشبكي الكامل")
+print("DEBUG: الملف admin.py تم تحميله بنجاح مع دعم التنسيق الشبكي الكامل وزر الإلغاء الشامل")
 
 import telebot
 from config import bot, ADMIN_IDS, OWNER_ID
@@ -10,6 +10,12 @@ from keyboards import (
 )
 from handlers.helpers import get_permissions, check_state
 
+# دالة مساعدة لإنشاء زر الإلغاء
+def get_cancel_markup():
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.add(telebot.types.InlineKeyboardButton(text="❌ إلغاء العملية", callback_data="cancel_broadcast"))
+    return markup
+
 # دالة مساعدة لحقن أزرار التنسيق الشبكي ديناميكياً والحفاظ على زر العودة بالأسفل دائماً
 def get_edit_markup(btn_id):
     markup = make_admin_edit_options_markup(btn_id)
@@ -17,7 +23,6 @@ def get_edit_markup(btn_id):
         telebot.types.InlineKeyboardButton(text="📐 تعديل السطر", callback_data=f"editopt_row_{btn_id}"),
         telebot.types.InlineKeyboardButton(text="↔️ تعديل الترتيب", callback_data=f"editopt_sort_{btn_id}")
     ]
-    # إدراج أزرار التحكم بالشبكة فوق زر العودة للخلف مباشرة
     if len(markup.keyboard) >= 1:
         markup.keyboard.insert(-1, layout_row)
     else:
@@ -48,6 +53,20 @@ def register_admin_handlers():
         bot.answer_callback_query(call.id)
 
     # ==========================================
+    # معالج إلغاء العمليات الشامل
+    # ==========================================
+    @bot.callback_query_handler(func=lambda call: call.data == "cancel_broadcast")
+    def cb_cancel_process(call):
+        user_id = call.from_user.id
+        clear_user_state(user_id)
+        bot.answer_callback_query(call.id, "💥 تم إلغاء العملية بنجاح.", show_alert=False)
+        bot.edit_message_text(
+            chat_id=user_id, message_id=call.message.message_id,
+            text="⚙️ مرحباً بك في لوحة تحكم المشرف.\n\nالرجاء تحديد الإجراء الذي ترغب في القيام به:",
+            reply_markup=make_admin_settings_markup()
+        )
+
+    # ==========================================
     # البث الجماعي للطلاب (مع ميزة الإلغاء)
     # ==========================================
     @bot.callback_query_handler(func=lambda call: call.data == "admin_broadcast")
@@ -57,27 +76,12 @@ def register_admin_handlers():
         if not is_admin_or_alert(call, perms, 'can_broadcast'): return
         
         set_user_state(user_id, "WAITING_BROADCAST_MSG")
-        
-        cancel_markup = telebot.types.InlineKeyboardMarkup()
-        cancel_markup.add(telebot.types.InlineKeyboardButton(text="❌ إلغاء العملية", callback_data="cancel_broadcast"))
-        
         bot.edit_message_text(
             chat_id=user_id, message_id=call.message.message_id,
             text="📢 أرسل الآن الرسالة النصية التي تريد نشرها لكافة مستخدمي البوت👇:",
-            reply_markup=cancel_markup
+            reply_markup=get_cancel_markup()
         )
         bot.answer_callback_query(call.id)
-
-    @bot.callback_query_handler(func=lambda call: call.data == "cancel_broadcast")
-    def cb_cancel_broadcast(call):
-        user_id = call.from_user.id
-        clear_user_state(user_id)
-        bot.answer_callback_query(call.id, "💥 تم إلغاء الإرسال الجماعي.", show_alert=False)
-        bot.edit_message_text(
-            chat_id=user_id, message_id=call.message.message_id,
-            text="⚙️ مرحباً بك في لوحة تحكم المشرف.\n\nالرجاء تحديد الإجراء الذي ترغب في القيام به:",
-            reply_markup=make_admin_settings_markup()
-        )
 
     @bot.message_handler(func=check_state("WAITING_BROADCAST_MSG"), content_types=['text'])
     def process_broadcast_message(message):
@@ -164,7 +168,7 @@ def register_admin_handlers():
         fb_id = int(parts[1])
         target_user_id = int(parts[2])
         set_user_state(user_id, "WAITING_ADMIN_REPLY", {"target_user_id": target_user_id, "fb_id": fb_id})
-        bot.send_message(user_id, "✍️ اكتب ردك الآن ليتم إرساله فوراً للمستخدم:")
+        bot.send_message(user_id, "✍️ اكتب ردك الآن ليتم إرساله فوراً للمستخدم:", reply_markup=get_cancel_markup())
         bot.answer_callback_query(call.id)
 
     @bot.message_handler(func=check_state("WAITING_ADMIN_REPLY"), content_types=['text'])
@@ -186,7 +190,7 @@ def register_admin_handlers():
         clear_user_state(user_id)
 
     # ==========================================
-    # شجرة وهيكلة الأزرار (إضافة زر بتنسيق شبكي)
+    # شجرة وهيكلة الأزرار (إضافة زر بتنسيق شبكي مع الإلغاء)
     # ==========================================
     @bot.callback_query_handler(func=lambda call: call.data == "adm_add_btn")
     def cb_add_button_init(call):
@@ -196,7 +200,8 @@ def register_admin_handlers():
         set_user_state(user_id, "WAITING_BTN_NAME")
         bot.edit_message_text(
             chat_id=user_id, message_id=call.message.message_id,
-            text="✍️ حسناً، أرسل الآن اسم الزر الجديد الذي تريد إنشاءه:"
+            text="✍️ حسناً، أرسل الآن اسم الزر الجديد الذي تريد إنشاءه:",
+            reply_markup=get_cancel_markup()
         )
         bot.answer_callback_query(call.id)
 
@@ -224,11 +229,11 @@ def register_admin_handlers():
         parent_raw = parts[3]
         parent_id = None if parent_raw == "null" else int(parent_raw)
         
-        # تخزين البيانات مؤقتاً والانتقال لطلب رقم السطر
         set_user_state(user_id, "WAITING_BTN_ROW", {"btn_name": btn_name, "parent_id": parent_id})
         bot.edit_message_text(
             chat_id=user_id, message_id=call.message.message_id,
-            text=f"📐 ممتاز! الآن أرسل **رقم السطر** الذي تريد ظهور زر [ {btn_name} ] فيه:\n(مثال: أدخل 1 ليكون بالسطر الأول فوق، أو 3 ليكون بالسطر الثالث...)"
+            text=f"📐 ممتاز! الآن أرسل **رقم السطر** الذي تريد ظهور زر [ {btn_name} ] فيه:\n(مثال: أدخل 1 ليكون بالسطر الأول فوق، أو 3 ليكون بالسطر الثالث...)",
+            reply_markup=get_cancel_markup()
         )
         bot.answer_callback_query(call.id)
 
@@ -240,7 +245,7 @@ def register_admin_handlers():
             clear_user_state(user_id)
             return
         if not message.text.strip().isdigit():
-            bot.send_message(user_id, "❌ الرجاء إدخال رقم صحيح فقط لرقم السطر:")
+            bot.send_message(user_id, "❌ الرجاء إدخال رقم صحيح فقط لرقم السطر:", reply_markup=get_cancel_markup())
             return
         
         row_num = int(message.text.strip())
@@ -249,7 +254,8 @@ def register_admin_handlers():
         
         set_user_state(user_id, "WAITING_BTN_SORT", data)
         bot.send_message(
-            user_id, f"↔️ رائع! الآن أرسل **الترتيب الأفقي** للزر داخل السطر {row_num}:\n(مثال: أدخل 1 ليكون الأول من اليسار، 2 ليكون بجانبه، وهكذا...)"
+            user_id, f"↔️ رائع! الآن أرسل **الترتيب الأفقي** للزر داخل السطر {row_num}:\n(مثال: أدخل 1 ليكون الأول من اليسار، 2 ليكون بجانبه، وهكذا...)",
+            reply_markup=get_cancel_markup()
         )
 
     @bot.message_handler(func=check_state("WAITING_BTN_SORT"), content_types=['text'])
@@ -260,7 +266,7 @@ def register_admin_handlers():
             clear_user_state(user_id)
             return
         if not message.text.strip().isdigit():
-            bot.send_message(user_id, "❌ الرجاء إدخال رقم صحيح فقط للترتيب الأفقي:")
+            bot.send_message(user_id, "❌ الرجاء إدخال رقم صحيح فقط للترتيب الأفقي:", reply_markup=get_cancel_markup())
             return
             
         sort_ord = int(message.text.strip())
@@ -270,7 +276,6 @@ def register_admin_handlers():
         parent_id = data.get("parent_id")
         row_num = data.get("row_number")
         
-        # حفظ الزر الجديد بالكامل في قاعدة البيانات مع موقعه الشبكي المخصص
         res = execute_query(
             "INSERT INTO buttons (name, parent_id, row_number, sort_order) VALUES (%s, %s, %s, %s) RETURNING id;",
             (btn_name, parent_id, row_num, sort_ord), fetch=True, commit=True
@@ -279,7 +284,8 @@ def register_admin_handlers():
         
         set_user_state(user_id, "WAITING_BTN_TEXT", {"button_id": new_btn_id})
         bot.send_message(
-            user_id, f"✅ تم تثبيت الزر وإعداد موقعه بنجاح!\n\n✍️ أرسل الآن الرسالة النصية التوضيحية له:"
+            user_id, f"✅ تم تثبيت الزر وإعداد موقعه بنجاح!\n\n✍️ أرسل الآن الرسالة النصية التوضيحية له:",
+            reply_markup=get_cancel_markup()
         )
 
     @bot.message_handler(func=check_state("WAITING_BTN_TEXT"), content_types=['text'])
@@ -372,7 +378,7 @@ def register_admin_handlers():
             reply_markup=markup
         )
 
-        # حذف ملف فردي
+    # حذف ملف فردي
     @bot.callback_query_handler(func=lambda call: call.data.startswith("delfile_"))
     def cb_delete_single_file(call):
         user_id = call.from_user.id
@@ -411,7 +417,6 @@ def register_admin_handlers():
             reply_markup=make_admin_file_manager_markup(btn_id)
         )
         
-
     @bot.callback_query_handler(func=lambda call: call.data.startswith("choose_edit_"))
     def cb_choose_edit(call):
         user_id = call.from_user.id
@@ -439,7 +444,8 @@ def register_admin_handlers():
         set_user_state(user_id, "WAITING_EDIT_NAME", {"button_id": btn_id})
         bot.edit_message_text(
             chat_id=user_id, message_id=call.message.message_id,
-            text="✍️ أرسل الاسم الجديد للزر الآن:"
+            text="✍️ أرسل الاسم الجديد للزر الآن:",
+            reply_markup=get_cancel_markup()
         )
         bot.answer_callback_query(call.id)
 
@@ -466,7 +472,8 @@ def register_admin_handlers():
         set_user_state(user_id, "WAITING_EDIT_TEXT", {"button_id": btn_id})
         bot.edit_message_text(
             chat_id=user_id, message_id=call.message.message_id,
-            text="✍️ أرسل الرسالة النصية الجديدة للزر:"
+            text="✍️ أرسل الرسالة النصية الجديدة للزر:",
+            reply_markup=get_cancel_markup()
         )
         bot.answer_callback_query(call.id)
 
@@ -495,7 +502,8 @@ def register_admin_handlers():
         set_user_state(user_id, "WAITING_EDIT_ROW", {"button_id": btn_id})
         bot.edit_message_text(
             chat_id=user_id, message_id=call.message.message_id,
-            text="📐 أرسل رقم السطر الجديد للزر الآن (رقم صحيح):"
+            text="📐 أرسل رقم السطر الجديد للزر الآن (رقم صحيح):",
+            reply_markup=get_cancel_markup()
         )
         bot.answer_callback_query(call.id)
 
@@ -507,7 +515,7 @@ def register_admin_handlers():
             clear_user_state(user_id)
             return
         if not message.text.strip().isdigit():
-            bot.send_message(user_id, "❌ الرجاء إدخال رقم صحيح فقط لرقم السطر:")
+            bot.send_message(user_id, "❌ الرجاء إدخال رقم صحيح فقط لرقم السطر:", reply_markup=get_cancel_markup())
             return
         state, data = get_user_state(user_id)
         btn_id = data.get('button_id')
@@ -525,7 +533,8 @@ def register_admin_handlers():
         set_user_state(user_id, "WAITING_EDIT_SORT", {"button_id": btn_id})
         bot.edit_message_text(
             chat_id=user_id, message_id=call.message.message_id,
-            text="↔️ أرسل رقم الترتيب الأفقي الجديد للزر داخل السطر (رقم صحيح):"
+            text="↔️ أرسل رقم الترتيب الأفقي الجديد للزر داخل السطر (رقم صحيح):",
+            reply_markup=get_cancel_markup()
         )
         bot.answer_callback_query(call.id)
 
@@ -537,7 +546,7 @@ def register_admin_handlers():
             clear_user_state(user_id)
             return
         if not message.text.strip().isdigit():
-            bot.send_message(user_id, "❌ الرجاء إدخال رقم صحيح فقط للترتيب الأفقي:")
+            bot.send_message(user_id, "❌ الرجاء إدخال رقم صحيح فقط للترتيب الأفقي:", reply_markup=get_cancel_markup())
             return
         state, data = get_user_state(user_id)
         btn_id = data.get('button_id')
@@ -603,6 +612,7 @@ def register_admin_handlers():
         
         save_markup = telebot.types.InlineKeyboardMarkup()
         save_markup.add(telebot.types.InlineKeyboardButton(text="💾 حفظ وإنهاء الرفع", callback_data="save_uploaded_files"))
+        save_markup.add(telebot.types.InlineKeyboardButton(text="❌ إلغاء العملية", callback_data="cancel_broadcast"))
         
         bot.edit_message_text(
             chat_id=user_id, message_id=call.message.message_id,
@@ -644,6 +654,7 @@ def register_admin_handlers():
             
             save_markup = telebot.types.InlineKeyboardMarkup()
             save_markup.add(telebot.types.InlineKeyboardButton(text="💾 حفظ وإنهاء الرفع", callback_data="save_uploaded_files"))
+            save_markup.add(telebot.types.InlineKeyboardButton(text="❌ إلغاء العملية", callback_data="cancel_broadcast"))
             
             bot.send_message(
                 user_id, 
@@ -651,7 +662,7 @@ def register_admin_handlers():
                 reply_markup=save_markup
             )
         else:
-            bot.send_message(user_id, "❌ نوع الملف غير مدعوم أو فشل الرفع.")
+            bot.send_message(user_id, "❌ نوع الملف غير مدعوم أو فشل الرفع.", reply_markup=get_cancel_markup())
 
     @bot.callback_query_handler(func=lambda call: call.data == "save_uploaded_files")
     def cb_save_uploaded_files(call):
