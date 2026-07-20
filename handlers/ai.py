@@ -21,7 +21,7 @@ def register_ai_handlers():
             
         processing_msg = config.bot.reply_to(
             message, 
-            "🩺 **جاري تحليل السؤال عبر ذكاء Groq السريع...**", 
+            "🩺 **جاري تحليل السؤال، يرجى الإنتظار**", 
             parse_mode="Markdown"
         )
         
@@ -47,7 +47,7 @@ def register_ai_handlers():
             config.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=processing_msg.message_id,
-                text=f"🤖 **إجابة المساعد الذكي:**\n\n{answer}",
+                text=f"🤖 **إجابة المساعد الطبي:**\n\n{answer}",
                 parse_mode="Markdown"
             )
             
