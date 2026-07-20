@@ -6,7 +6,7 @@ from .fallback import register_fallback_handlers
 from .ai import register_ai_handlers  # استيراد ملف الذكاء الاصطناعي
 
 def init_handlers():
-    # الترتيب مهم جداً
+    # الترتيب مهم جداً وبدون تمرير معاملات لكي تبقى تعمل كما كانت
     register_admin_handlers() 
     register_user_handlers()
     register_owner_handlers()
