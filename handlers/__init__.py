@@ -3,6 +3,7 @@ from .admin import register_admin_handlers  # استدعي الإدارة أول
 from .user import register_user_handlers
 from .owner import register_owner_handlers
 from .fallback import register_fallback_handlers
+from .ai import register_ai_handlers  # استيراد ملف الذكاء الاصطناعي
 
 def init_handlers():
     # الترتيب مهم جداً
@@ -10,3 +11,4 @@ def init_handlers():
     register_user_handlers()
     register_owner_handlers()
     register_fallback_handlers()
+    register_ai_handlers(bot)  # تسجيل معالجات الذكاء الاصطناعي
