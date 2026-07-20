@@ -1,14 +1,14 @@
 # handlers/__init__.py
-from .admin import register_admin_handlers  # استدعي الإدارة أولاً
+from .admin import register_admin_handlers  
 from .user import register_user_handlers
 from .owner import register_owner_handlers
-from .fallback import register_fallback_handlers
 from .ai import register_ai_handlers  # استيراد ملف الذكاء الاصطناعي
+from .fallback import register_fallback_handlers  # الـ fallback يكون في النهاية
 
 def init_handlers():
-    # الترتيب مهم جداً وبدون تمرير معاملات لكي تبقى تعمل كما كانت
+    # الترتيب الصحيح: الأوامر المخصصة أولاً، والـ Fallback في النهاية تماماً
     register_admin_handlers() 
     register_user_handlers()
     register_owner_handlers()
-    register_fallback_handlers()
-    register_ai_handlers()  # تسجيل معالجات الذكاء الاصطناعي
+    register_ai_handlers()  # تسجيل الذكاء الاصطناعي قبل الـ Fallback
+    register_fallback_handlers()  # الـ Fallback يلتقط الباقي فقط
