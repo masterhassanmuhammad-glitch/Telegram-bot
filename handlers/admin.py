@@ -92,7 +92,7 @@ def register_admin_handlers():
         for u_id_tuple in all_users:
             u_id = u_id_tuple[0]
             try:
-                bot.send_message(u_id, f"📢 إعلان هام من الإدارة:\n\n{message.text}")
+                bot.send_message(u_id, f"📢 إعلان هام من إدارة البوت:\n\n{message.text}")
                 success_count += 1
             except Exception: pass
             
