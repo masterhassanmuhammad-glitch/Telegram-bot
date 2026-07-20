@@ -183,7 +183,7 @@ def register_admin_handlers():
         target_user_id = data.get('target_user_id')
         fb_id = data.get('fb_id')
         try:
-            bot.send_message(target_user_id, f"💬 رد من الإدارة على استفسارك:\n\n{message.text}")
+            bot.send_message(target_user_id, f"💬 رد من إدارة البوت على استفسارك:\n\n{message.text}")
             execute_query("UPDATE feedback SET status = 'replied' WHERE id = %s;", (fb_id,), commit=True)
             bot.send_message(user_id, "✅ تم إرسال الرد بنجاح للمستخدم!", reply_markup=make_main_menu_markup(perms, user_id))
         except Exception as e:
