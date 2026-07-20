@@ -11,4 +11,4 @@ def init_handlers():
     register_user_handlers()
     register_owner_handlers()
     register_fallback_handlers()
-    register_ai_handlers(bot)  # تسجيل معالجات الذكاء الاصطناعي
+    register_ai_handlers()  # تسجيل معالجات الذكاء الاصطناعي
