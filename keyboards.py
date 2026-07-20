@@ -140,6 +140,7 @@ def make_admin_move_button_markup(button_id):
 def make_admin_file_manager_markup(button_id):
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(InlineKeyboardButton(text="➕ إضافة ملف جديد لهذا الزر", callback_data=f"addfile_{button_id}"))
+    markup.add(InlineKeyboardButton(text="🗑️ حذف جميع الملفات", callback_data=f"delallfiles_{button_id}"))
     
     files = execute_query("SELECT id, file_type FROM button_files WHERE button_id = %s ORDER BY id ASC;", (button_id,), fetch=True)
     for f_record_id, f_type in files:
