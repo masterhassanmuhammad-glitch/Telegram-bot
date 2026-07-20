@@ -372,6 +372,46 @@ def register_admin_handlers():
             reply_markup=markup
         )
 
+        # حذف ملف فردي
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("delfile_"))
+    def cb_delete_single_file(call):
+        user_id = call.from_user.id
+        perms = get_permissions(user_id)
+        if not is_admin_or_alert(call, perms, 'can_settings'): return
+        
+        parts = call.data.split("_")
+        f_record_id = int(parts[1])
+        btn_id = int(parts[2])
+        
+        execute_query("DELETE FROM button_files WHERE id = %s;", (f_record_id,), commit=True)
+        bot.answer_callback_query(call.id, "🗑️ تم حذف الملف بنجاح!", show_alert=True)
+        
+        bot.edit_message_text(
+            chat_id=user_id, message_id=call.message.message_id,
+            text="📁 قائمة الملفات المربوطة بهذا الزر حالياً. يمكنك تعديلها:",
+            reply_markup=make_admin_file_manager_markup(btn_id)
+        )
+
+    # حذف جميع الملفات دفعة واحدة
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("delallfiles_"))
+    def cb_delete_all_files(call):
+        user_id = call.from_user.id
+        perms = get_permissions(user_id)
+        if not is_admin_or_alert(call, perms, 'can_settings'): return
+        
+        parts = call.data.split("_")
+        btn_id = int(parts[1])
+        
+        execute_query("DELETE FROM button_files WHERE button_id = %s;", (btn_id,), commit=True)
+        bot.answer_callback_query(call.id, "🗑️ تم حذف جميع الملفات بنجاح!", show_alert=True)
+        
+        bot.edit_message_text(
+            chat_id=user_id, message_id=call.message.message_id,
+            text="📁 قائمة الملفات المربوطة بهذا الزر حالياً. يمكنك تعديلها:",
+            reply_markup=make_admin_file_manager_markup(btn_id)
+        )
+        
+
     @bot.callback_query_handler(func=lambda call: call.data.startswith("choose_edit_"))
     def cb_choose_edit(call):
         user_id = call.from_user.id
