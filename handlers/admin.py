@@ -51,7 +51,23 @@ def register_admin_handlers():
             reply_markup=make_admin_settings_markup()
         )
         bot.answer_callback_query(call.id)
+        
 
+   @bot.message_handler(commands=['allow'])
+   def cmd_allow_user(message):
+        user_id = message.from_user.id
+        if user_id != OWNER_ID and user_id not in ADMIN_IDS:
+            return
+            
+        parts = message.text.split()
+        if len(parts) < 2 or not parts[1].isdigit():
+            bot.send_message(user_id, "❌ الاستخدام الصحيح:\n/allow <user_id>")
+            return
+            
+        target_id = int(parts[1])
+        execute_query("INSERT INTO whitelist_users (user_id) VALUES (%s) ON CONFLICT DO NOTHING;", (target_id,), commit=True)
+        bot.send_message(user_id, f"✅ تم السماح للمستخدم صاحب الـ ID ({target_id}) باستخدام البوت بنجاح دون الحاجة للانضمام للقناة.")
+        
     # ==========================================
     # معالج إلغاء العمليات الشامل
     # ==========================================
