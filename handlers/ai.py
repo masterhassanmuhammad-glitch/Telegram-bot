@@ -1,10 +1,8 @@
-import google.generativeai as genai
-from google.api_core.exceptions import ResourceExhausted
+from google import genai
 from config import GEMINI_API_KEY
 
-# تهيئة نموذج الذكاء الاصطناعي
-genai.configure(api_key=GEMINI_API_KEY)
-ai_model = genai.GenerativeModel('gemini-1.5-flash')
+# تهيئة العميل باستخدام المكتبة الحديثة
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 def register_ai_handlers(bot):
 
@@ -16,7 +14,7 @@ def register_ai_handlers(bot):
         if not query:
             bot.reply_to(
                 message, 
-                "❌ أرجو كتابة سؤالك بعد الأمر، مثال:\n`/ask ما هي أسباب ارتفاع ضغط الدم؟`", 
+                "❌ أرجو كتابة سؤالك الطبي أو العلمي بعد الأمر، مثال:\n`/ask ما هي أسباب ارتفاع ضغط الدم؟`", 
                 parse_mode="Markdown"
             )
             return
@@ -34,7 +32,11 @@ def register_ai_handlers(bot):
                 f"{query}"
             )
             
-            response = ai_model.generate_content(prompt)
+            # استخدام الطريقة الحديثة للتوليد
+            response = client.models.generate_content(
+                model='gemini-1.5-flash',
+                contents=prompt,
+            )
             
             bot.edit_message_text(
                 chat_id=chat_id,
@@ -43,12 +45,6 @@ def register_ai_handlers(bot):
                 parse_mode="Markdown"
             )
             
-        except ResourceExhausted:
-            bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=processing_msg.message_id,
-                text="⏳ عذراً، الضغط على خدمة الذكاء الاصطناعي مرتفع جداً الآن. يرجى المحاولة بعد قليل."
-            )
         except Exception as e:
             print(f"[AI Error] {e}")
             bot.edit_message_text(
