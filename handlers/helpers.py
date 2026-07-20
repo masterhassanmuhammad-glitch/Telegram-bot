@@ -213,11 +213,28 @@ BATCH_GROUP_ID = -1003472213441
 # التحقق من عضوية المستخدم
 # ==========================================================
 
+# ==========================================================
+# التحقق من عضوية المستخدم أو الاستثناء
+# ==========================================================
+
 def is_user_in_batch(bot, user_id):
     """
-    ترجع True إذا كان المستخدم عضواً في المجموعة.
+    ترجع True إذا كان المستخدم عضواً في المجموعة أو مضافاً في قائمة الاستثناءات (Whitelist).
     """
 
+    # 1. التحقق أولاً مما إذا كان المستخدم ضمن قائمة الاستثناءات المسموحة
+    try:
+        whitelisted = execute_query(
+            "SELECT 1 FROM whitelist_users WHERE user_id = %s;",
+            (user_id,),
+            fetch=True
+        )
+        if whitelisted:
+            return True
+    except Exception as e:
+        print(f"[HELPERS] Whitelist check failed: {e}")
+
+    # 2. الفحص العادي لعضوية المجموعة إذا لم يكن مستثنى
     try:
         member = bot.get_chat_member(
             BATCH_GROUP_ID,
@@ -235,6 +252,7 @@ def is_user_in_batch(bot, user_id):
             f"[HELPERS] Membership check failed: {e}"
         )
         return False
+        
 
 
 # ==========================================================
