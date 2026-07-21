@@ -14,25 +14,29 @@ def register_ai_handlers():
         if not query:
             config.bot.reply_to(
                 message, 
-                "❌ أرجو كتابة سؤالك بعد الأمر، مثال:\n`/ask ما هي أسباب ارتفاع ضغط الدم؟`", 
-                parse_mode="Markdown"
+                "❌ أرجو كتابة سؤالك بعد الأمر، مثال:\n<code>/ask ما هي أسباب ارتفاع ضغط الدم؟</code>\n<code>/ask What are the causes of hypertension?</code>", 
+                parse_mode="HTML"
             )
             return
             
         processing_msg = config.bot.reply_to(
             message, 
-            "🤖 <b>جاري تحليل السؤال، يرجى الإنتظار...</b>", 
+            "🤖 <b>جاري تحليل السؤال وصياغة الإجابة... / Analyzing query...</b>", 
             parse_mode="HTML"
         )
         
         try:
-            # إرسال الطلب مباشرة باستخدام نموذج Llama 3.3 القوي عبر Groq
+            # إرسال الطلب مع تعليمات مطابقة اللغة والتنسيق المجمل
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
                     {
                         "role": "system",
-                        "content": "أنت مساعد أكاديمي ذكي لطلاب كلية الطب. قدم إجابة علمية دقيقة، منظمة، وواضحة تماماً باللغة العربية."
+                        "content": (
+                            "أنت مساعد أكاديمي ذكي ومرن لطلاب كلية الطب. "
+                            "قاعدة اللغة الصارمة: أجب حصرياً بنفس لغة سؤال المستخدم (إذا كان السؤال باللغة العربية أجب باللغة العربية الفصحى، وإذا كان بالإنجليزية أجب بالإنجليزية). "
+                            "تعليمات التنسيق: قدم إجابات علمية دقيقة، منسقة بشكل احترافي وجميل جداً، باستخدام العناوين البارزة ورموز التعداد الأنيقة (▪️ أو 🔹) لتسهيل القراءة عبر تيليجرام."
+                        )
                     },
                     {
                         "role": "user",
@@ -47,7 +51,7 @@ def register_ai_handlers():
             config.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=processing_msg.message_id,
-                text=f"🤖 <b>الإجابة:</b>\n\n{answer}",
+                text=f"{answer}",
                 parse_mode="HTML"
             )
             
@@ -57,7 +61,7 @@ def register_ai_handlers():
                 config.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=processing_msg.message_id,
-                    text="⚠️ عذراً، حدث خطأ أثناء الاتصال بخدمة الذكاء الاصطناعي. حاول مرة أخرى لاحقاً."
+                    text="⚠️ عذراً، حدث خطأ أثناء الاتصال بخدمة الذكاء الاصطناعي. حاول مرة أخرى لاحقاً.\n⚠️ Sorry, an error occurred. Please try again later."
                 )
             except:
                 pass
