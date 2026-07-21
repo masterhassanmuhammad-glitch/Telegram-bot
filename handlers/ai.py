@@ -40,14 +40,14 @@ def register_ai_handlers():
         if not query:
             config.bot.reply_to(
                 message, 
-                "❌ أرجو كتابة سؤالك بعد الأمر، مثال:\n<code>/ask ما هي أسباب ارتفاع ضغط الدم؟</code>\n<code>/ask What are the causes of hypertension?</code>", 
+                "❌ أرجو كتابة سؤالك بعد الأمر، مثال:\n<code>/ask ما هو ضغط الدم الطبيعي؟</code>\n<code>/ask What is normal blood pressure?</code>", 
                 parse_mode="HTML"
             )
             return
             
         processing_msg = config.bot.reply_to(
             message, 
-            "🤖 جاري التفكير، يرجى الإنتظار...", 
+            "🤖 <b>جاري صياغة الإجابة المباشرة... / Generating response...</b>", 
             parse_mode="HTML"
         )
         
@@ -58,13 +58,13 @@ def register_ai_handlers():
                     {
                         "role": "system",
                         "content": (
-                            "You are an exhaustive, highly detailed, and professional academic assistant for medical students. "
-                            "CRITICAL INSTRUCTION: Provide deep, comprehensive, and thoroughly detailed explanations with maximum depth. "
+                            "You are a concise, direct, and precise academic assistant for medical students. "
+                            "CRITICAL INSTRUCTION: Provide short, focused, and precise answers that match the exact scope and length of the user's question without unnecessary verbosity or fluff.\n"
                             "CRITICAL RULE 1 (Language): You MUST reply in the EXACT SAME language as the user's query.\n"
                             "CRITICAL RULE 2 (Strict HTML Formatting - NO MARKDOWN ALLOWED): "
                             "- NEVER use Markdown asterisks like ** for bold text. Use HTML tags <b>text</b> instead. "
                             "- NEVER use * or - for bullet points. You MUST use '▪️' or '▫️' for all lists. "
-                            "- Use HTML blockquote tags <blockquote>Your text here</blockquote> for important clinical notes."
+                            "- Use HTML blockquote tags <blockquote>Your text here</blockquote> for key takeaways if needed."
                         )
                     },
                     {
@@ -73,7 +73,7 @@ def register_ai_handlers():
                     }
                 ],
                 temperature=0.3,
-                max_tokens=8192,
+                max_tokens=1000,  # تم تقليلها لتلائم الإجابات القصيرة وتحافظ على الرصيد اليومي
             )
             
             answer = completion.choices[0].message.content
@@ -91,13 +91,21 @@ def register_ai_handlers():
             )
             
         except Exception as e:
-            print(f"[Groq AI Error] {e}")
+            error_str = str(e)
+            print(f"[Groq AI Error] {error_str}")
+            
+            if "429" in error_str or "rate_limit_exceeded" in error_str:
+                error_text = "⚠️ <b>عذراً، لقد وصلت إلى الحد الأقصى المسموح به من الطلبات اليومية (Rate Limit). يرجى المحاولة لاحقاً.</b>"
+            else:
+                error_text = "⚠️ عذراً، حدث خطأ أثناء الاتصال بخدمة الذكاء الاصطناعي."
+                
             try:
                 config.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=processing_msg.message_id,
-                    text="⚠️ عذراً، حدث خطأ أثناء الاتصال بخدمة الذكاء الاصطناعي.\n⚠️ Sorry, an error occurred."
+                    text=error_text,
+                    parse_mode="HTML"
                 )
             except:
                 pass
-                
+            
