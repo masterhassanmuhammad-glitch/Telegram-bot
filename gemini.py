@@ -20,11 +20,11 @@ SYSTEM_INSTRUCTION = (
 
 def ask_gemini(question):
     max_retries = 3
-    delay = 25  # البدء بـ 25 ثانية بناءً على مدة الانتظار المقترحة من جوجل
+    delay = 25
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model="gemini-1.5-flash",  
+                model="gemini-2.5-flash",  
                 contents=question,
                 config={
                     'system_instruction': SYSTEM_INSTRUCTION,
@@ -47,7 +47,7 @@ def ask_gemini_stream(question):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content_stream(
-                model="gemini-1.5-flash",  # تم تحديثه هنا أيضاً ليعمل بنجاح
+                model="gemini-2.5-flash",  
                 contents=question,
                 config={
                     'system_instruction': SYSTEM_INSTRUCTION,
