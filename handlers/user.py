@@ -1,3 +1,4 @@
+import time
 from telebot import types
 from .helpers import (
     is_user_in_batch,
@@ -76,7 +77,22 @@ def register_user_handlers():
         waiting = bot.reply_to(message, "🤖 أفكر...")
 
         try:
-            answer = ask_gemini(question)
+            # تطبيق آلية إعادة المحاولة عند حدوث ضغط عالي (503)
+            max_retries = 3
+            delay = 2
+            answer = None
+            
+            for attempt in range(max_retries):
+                try:
+                    answer = ask_gemini(question)
+                    break
+                except Exception as ex:
+                    error_str = str(ex)
+                    if ("503" in error_str or "UNAVAILABLE" in error_str) and attempt < max_retries - 1:
+                        time.sleep(delay)
+                        delay *= 2
+                        continue
+                    raise ex
 
             try:
                 bot.delete_message(message.chat.id, waiting.message_id)
@@ -91,9 +107,18 @@ def register_user_handlers():
                 )
 
         except Exception as e:
-            bot.reply_to(message, f"❌ {e}")
-
-    # بقية معالجات user.py...
+            try:
+                bot.delete_message(message.chat.id, waiting.message_id)
+            except:
+                pass
+                
+            error_msg = str(e)
+            if "503" in error_msg or "UNAVAILABLE" in error_msg:
+                bot.reply_to(message, "⚠️ خوادم الذكاء الاصطناعي تواجه ضغطاً عالياً حالياً، يرجى المحاولة بعد قليل.")
+            elif "PERMISSION_DENIED" in error_msg or "leaked" in error_msg:
+                bot.reply_to(message, "❌ مفتاح الـ API المستخدم غير صالح أو تم إيقافه لأسباب أمنية.")
+            else:
+                bot.reply_to(message, f"❌ حدث خطأ أثناء معالجة الطلب.")
 
     # 1. أمر البدء (مع الحذف الفوري لرسالة الـ /start)
     @bot.message_handler(commands=['start'])
