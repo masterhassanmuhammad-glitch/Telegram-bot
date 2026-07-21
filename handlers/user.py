@@ -99,10 +99,12 @@ def register_user_handlers():
             except:
                 pass
 
+            # إرسال الرد مقسماً مع تفعيل تنسيق HTML لترتيب النصوص والأكواد
             for i in range(0, len(answer), 4000):
                 bot.send_message(
                     message.chat.id,
                     answer[i:i+4000],
+                    parse_mode='HTML',
                     reply_to_message_id=message.message_id
                 )
 
@@ -415,4 +417,3 @@ def register_user_handlers():
         bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
         
         show_main_menu(message.chat.id, user_id)
-        
