@@ -3,10 +3,12 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import telebot
 
-# 1. قراءة متغيرات البيئة من Render
+# 1. قراءة متغيرات البيئة من Render بشكل آمن
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 DATABASE_URL = os.environ.get('DATABASE_URL')
 ADMIN_IDS_RAW = os.environ.get('ADMIN_IDS', '')
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 
 # تحويل هويات الآدمنية إلى قائمة أرقام بشكل آمن
 ADMIN_IDS = []
@@ -43,11 +45,6 @@ def run_health_server():
 
 # تشغيل خادم الويب في الخلفية بشكل منفصل
 threading.Thread(target=run_health_server, daemon=True).start()
-# config.py (تأكد من إضافة هذا السطر في نهاية الملف)
 
 # تعريف معرف المالك (أول ID يتم وضعه في قائمة المشرفين بمتغيرات البيئة)
 OWNER_ID = ADMIN_IDS[0] if ADMIN_IDS else None
-# config.py
-GROQ_API_KEY = "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"
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
