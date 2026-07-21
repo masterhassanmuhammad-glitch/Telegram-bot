@@ -126,17 +126,23 @@ def register_user_handlers():
             )
 
         except Exception as e:
-            error_msg = str(e)
-            print(f"❌ Stream Error: {error_msg}")
             try:
-                bot.edit_message_text(
-                    chat_id=message.chat.id,
-                    message_id=waiting_msg.message_id,
-                    text=f"❌ حدث خطأ أثناء معالجة الطلب:\n<code>{error_msg}</code>",
-                    parse_mode='HTML'
-                )
+                bot.delete_message(message.chat.id, waiting.message_id)
             except:
-                bot.reply_to(message, "❌ حدث خطأ أثناء معالجة الطلب.")
+                pass
+                
+            error_msg = str(e)
+            print(f"❌ Ask Error: {error_msg}")
+            
+            # معالجة أخطاء الحصة المجاوزة والضغط العالي
+            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                bot.reply_to(message, "⚠️ عذراً، لقد تجاوز مفتاح الذكاء الاصطناعي الحد الأقصى المسموح به من الطلبات المجانية اليومية (Quota Exceeded). يرجى المحاولة لاحقاً.")
+            elif "503" in error_msg or "UNAVAILABLE" in error_msg:
+                bot.reply_to(message, "⚠️ خوادم الذكاء الاصطناعي تواجه ضغطاً عالياً حالياً، يرجى المحاولة بعد قليل.")
+            elif "PERMISSION_DENIED" in error_msg or "leaked" in error_msg:
+                bot.reply_to(message, "❌ مفتاح الـ API المستخدم غير صالح أو تم إيقافه لأسباب أمنية.")
+            else:
+                bot.reply_to(message, f"❌ حدث خطأ أثناء معالجة الطلب.")
                 
 
     # 1. أمر البدء (مع الحذف الفوري لرسالة الـ /start)
