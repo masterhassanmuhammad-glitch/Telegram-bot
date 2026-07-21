@@ -2,25 +2,17 @@ import os
 import random
 import time
 from google import genai
-import config
 
-# قراءة المفاتيح من متغيرات البيئة أو استخدام المفاتيح مباشرة كاحتياطي
+# قراءة المفاتيح حصرياً من متغيرات البيئة (Environment Variables) لضمان الأمان التام
 env_keys = os.getenv("GEMINI_API_KEYS", "")
 if env_keys:
     API_KEYS = [k.strip() for k in env_keys.split(",") if k.strip()]
 else:
-    API_KEYS = [
-        getattr(config, "GEMINI_API_KEY", ""),
-        "AIzaSyCWdDVAJ0D-dksIBX9o5fu_hWV5HLYpBBU",
-        "AIzaSyCDCIGDaZzGVf6OnI4D2pLJI_va8aPaNU0",
-        "AIzaSyBjP4RqtdALOOLfhL-TGjuDllzLVwa9CKM",
-        "AIzaSyB7iPW1bWioXW4JuMn6v2oQ3RcMY367SII"
-    ]
-    API_KEYS = [k for k in API_KEYS if k] # تصفية أي مفتاح فارغ
+    API_KEYS = []
 
-def get_random_client():
+def get_system_client():
     if not API_KEYS:
-        raise ValueError("❌ لم يتم العثور على أي مفتاح API صالح!")
+        raise ValueError("❌ خطأ أمني: لم يتم العثور على أي مفتاح API في متغيرات البيئة (GEMINI_API_KEYS).")
     selected_key = random.choice(API_KEYS)
     return genai.Client(api_key=selected_key)
 
@@ -41,7 +33,7 @@ def ask_gemini(question):
     delay = 25
     for attempt in range(max_retries):
         try:
-            client = get_random_client()
+            client = get_system_client()
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=question,
@@ -65,7 +57,7 @@ def ask_gemini_stream(question):
     delay = 25
     for attempt in range(max_retries):
         try:
-            client = get_random_client()
+            client = get_system_client()
             response = client.models.generate_content_stream(
                 model="gemini-2.5-flash",
                 contents=question,
