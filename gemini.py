@@ -24,7 +24,7 @@ def ask_gemini(question):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-1.5-flash",  
                 contents=question,
                 config={
                     'system_instruction': SYSTEM_INSTRUCTION,
@@ -37,7 +37,7 @@ def ask_gemini(question):
             error_str = str(e)
             if ("429" in error_str or "RESOURCE_EXHAUSTED" in error_str) and attempt < max_retries - 1:
                 time.sleep(delay)
-                delay *= 2  # مضاعفة وقت الانتظار في حال تكرار المحاولة
+                delay *= 2  
                 continue
             raise e
 
@@ -47,7 +47,7 @@ def ask_gemini_stream(question):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content_stream(
-                model="gemini-2.5-flash",
+                model="gemini-1.5-flash",  # تم تحديثه هنا أيضاً ليعمل بنجاح
                 contents=question,
                 config={
                     'system_instruction': SYSTEM_INSTRUCTION,
