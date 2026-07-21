@@ -47,7 +47,7 @@ def register_ai_handlers():
             
         processing_msg = config.bot.reply_to(
             message, 
-            "🤖 <b>جاري إعداد إجابة علمية مفصلة وشاملة... / Generating detailed response...</b>", 
+            "🤖 جاري التفكير، يرجى الإنتظار...", 
             parse_mode="HTML"
         )
         
