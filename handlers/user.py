@@ -63,8 +63,8 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
 # 🛠️ الدالة الرئيسية لتسجيل كل معالجات المستخدم (User Handlers)
 def register_user_handlers():
 
-    @bot.message_handler(commands=['ask'])
-    def ask_command(message):
+        @bot.message_handler(commands=['ask'])
+        def ask_command(message):
         question = message.text.replace("/ask", "", 1).strip()
 
         if not question:
@@ -127,7 +127,7 @@ def register_user_handlers():
 
         except Exception as e:
             try:
-                bot.delete_message(message.chat.id, waiting.message_id)
+                bot.delete_message(message.chat.id, waiting_msg.message_id)
             except:
                 pass
                 
@@ -142,8 +142,8 @@ def register_user_handlers():
             elif "PERMISSION_DENIED" in error_msg or "leaked" in error_msg:
                 bot.reply_to(message, "❌ مفتاح الـ API المستخدم غير صالح أو تم إيقافه لأسباب أمنية.")
             else:
-                bot.reply_to(message, f"❌ حدث خطأ أثناء معالجة الطلب.")
-                
+                bot.reply_to(message, "❌ حدث خطأ أثناء معالجة الطلب.")
+
 
     # 1. أمر البدء (مع الحذف الفوري لرسالة الـ /start)
     @bot.message_handler(commands=['start'])
