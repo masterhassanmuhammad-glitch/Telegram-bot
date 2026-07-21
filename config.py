@@ -50,4 +50,4 @@ OWNER_ID = ADMIN_IDS[0] if ADMIN_IDS else None
 # config.py
 GROQ_API_KEY = "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"
 
-
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
