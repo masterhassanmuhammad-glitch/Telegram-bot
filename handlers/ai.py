@@ -14,28 +14,33 @@ def register_ai_handlers():
         if not query:
             config.bot.reply_to(
                 message, 
-                "❌ أرجو كتابة سؤالك بعد الأمر، مثال:\n<code>/ask ما هي أسباب ارتفاع ضغط الدم؟</code>\n<code>/ask What are the causes of hypertension?</code>", 
+                "❌ أرجو كتابة سؤالك بعد الأمر، مثال:\n<code>/ask ما هي أسباب ارتفاع ضغط الدم وتفاصيل الفيزيولوجيا المرضية؟</code>\n<code>/ask Explain the detailed pathophysiology of hypertension.</code>", 
                 parse_mode="HTML"
             )
             return
             
         processing_msg = config.bot.reply_to(
             message, 
-            "🤖 <b>جاري تحليل السؤال... / Analyzing query...</b>", 
+            "🤖 <b>جاري إعداد إجابة علمية مفصلة وشاملة... / Generating detailed comprehensive response...</b>", 
             parse_mode="HTML"
         )
         
         try:
-            # إرسال الطلب مع تعليمات صارمة للغة ووسوم HTML
+            # إرسال الطلب مع تعليمات دقيقة لتفعيل الصناديق، الإيموجي، والمساحة الكاملة
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
                     {
                         "role": "system",
                         "content": (
-                            "You are an intelligent and professional academic assistant for medical students. "
+                            "You are an exhaustive, highly detailed, and professional academic assistant for medical students. "
+                            "CRITICAL INSTRUCTION: Provide deep, comprehensive, and thoroughly detailed explanations with maximum depth. Do not summarize or omit important medical and scientific mechanisms, classifications, or clinical details.\n"
                             "CRITICAL RULE 1 (Language): You MUST reply in the EXACT SAME language as the user's query. If the user's query is in English, reply entirely in English. If it is in Arabic, reply entirely in Arabic.\n"
-                            "CRITICAL RULE 2 (Formatting): Do NOT use Markdown asterisks like ** or *. Instead, use strict HTML tags for formatting (e.g., <b>bold text</b>, <i>italic text</i>) because the output will be parsed as HTML. Keep formatting clean, structured, and professional without any messy artifacts."
+                            "CRITICAL RULE 2 (Formatting & Styling): "
+                            "- Use rich and professional emojis (e.g., 🔹, 📌, 💡, ✨, 🩺, 🔬) for headings and lists. "
+                            "- Use HTML tags for formatting since parse_mode='HTML' is active (e.g., <b>bold text</b>, <i>italic text</i>). "
+                            "- Crucially, use Telegram's HTML blockquote tag <blockquote>Your text here</blockquote> for important notes, core summaries, or clinical pearls (this creates the distinct quote box with a vertical line seen in Telegram). "
+                            "- Organize the comprehensive response cleanly using professional headings and structured bullet points."
                         )
                     },
                     {
@@ -43,15 +48,19 @@ def register_ai_handlers():
                         "content": query
                     }
                 ],
-                temperature=0.3, # تقليل درجة الحرارة لمنع تداخل الحروف والأخطاء الإملائية
+                temperature=0.4,
+                max_tokens=8192,  # أقصى مساحة ممكنة للإجابة المفصلة
             )
             
             answer = completion.choices[0].message.content
             
+            # التأكد من عدم تجاوز حدود تيليجرام للرسالة الواحدة (4000 حرف)
+            final_text = answer[:4000] if len(answer) <= 4000 else answer[:3997] + "..."
+            
             config.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=processing_msg.message_id,
-                text=answer,
+                text=final_text,
                 parse_mode="HTML"
             )
             
