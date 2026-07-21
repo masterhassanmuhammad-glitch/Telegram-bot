@@ -99,7 +99,15 @@ def register_user_handlers():
             except:
                 pass
 
-            # إرسال الرد مقسماً مع تفعيل تنسيق HTML لترتيب النصوص والأكواد
+            # 🛡️ تنظيف إضافي لاحتواء أي وسم غير مدعوم قد يكتبه النموذج (مثل <p> أو <br>)
+            answer = (
+                answer.replace("<p>", "")
+                      .replace("</p>", "\n")
+                      .replace("<br>", "\n")
+                      .replace("<br/>", "\n")
+            )
+
+            # إرسال الرد مقسماً مع تفعيل تنسيق HTML الآمن
             for i in range(0, len(answer), 4000):
                 bot.send_message(
                     message.chat.id,
@@ -115,17 +123,11 @@ def register_user_handlers():
                 pass
                 
             error_msg = str(e)
-            
-            # طباعة الخطأ في سجلات ريندر للمتابعة
-            print(f"❌ DEBUG Ask Error: {error_msg}")
-            
-            # فحص نوع الخطأ لعرض رسالة مفهومة، أو عرض الخطأ الحقيقي مؤقتاً
             if "503" in error_msg or "UNAVAILABLE" in error_msg:
                 bot.reply_to(message, "⚠️ خوادم الذكاء الاصطناعي تواجه ضغطاً عالياً حالياً، يرجى المحاولة بعد قليل.")
             elif "PERMISSION_DENIED" in error_msg or "leaked" in error_msg:
                 bot.reply_to(message, "❌ مفتاح الـ API المستخدم غير صالح أو تم إيقافه لأسباب أمنية.")
             else:
-                # إرسال الخطأ الحقيقي للمستخدم مؤقتاً لمعرفة السبب البرمجي
                 bot.reply_to(message, f"❌ خطأ تقني:\n<code>{error_msg}</code>", parse_mode='HTML')
                 
 
