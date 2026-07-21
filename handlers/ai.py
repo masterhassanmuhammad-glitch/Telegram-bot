@@ -1,15 +1,15 @@
-# handlers/ai.py
 import config
 from groq import Groq
+import os
 
-# تهيئة عميل Groq باستخدام المفتاح
-client = Groq(api_key=getattr(config, 'GROQ_API_KEY', None))
+# تهيئة عميل Groq باستخدام المفتاح من متغيرات البيئة
+client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
 
 def register_ai_handlers():
     @config.bot.message_handler(commands=['ask'])
     def ask_medical_ai(message):
         chat_id = message.chat.id
-        query = message.text.replace('/ask', '').strip()
+        query = message.text.replace('/ask', '', 1).strip()
         
         if not query:
             config.bot.reply_to(
@@ -21,8 +21,8 @@ def register_ai_handlers():
             
         processing_msg = config.bot.reply_to(
             message, 
-            "🩺 **جاري تحليل السؤال، يرجى الإنتظار**", 
-            parse_mode="Markdown"
+            "🩺 <b>جاري تحليل السؤال، يرجى الإنتظار...</b>", 
+            parse_mode="HTML"
         )
         
         try:
@@ -47,15 +47,18 @@ def register_ai_handlers():
             config.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=processing_msg.message_id,
-                text=f"🤖 **إجابة المساعد الطبي:**\n\n{answer}",
-                parse_mode="Markdown"
+                text=f"🤖 <b>إجابة المساعد الطبي:</b>\n\n{answer}",
+                parse_mode="HTML"
             )
             
         except Exception as e:
             print(f"[Groq AI Error] {e}")
-            config.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=processing_msg.message_id,
-                text="⚠️ عذراً، حدث خطأ أثناء الاتصال بخدمة الذكاء الاصطناعي. حاول مرة أخرى لاحقاً."
-            )
-            
+            try:
+                config.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=processing_msg.message_id,
+                    text="⚠️ عذراً، حدث خطأ أثناء الاتصال بخدمة الذكاء الاصطناعي. حاول مرة أخرى لاحقاً."
+                )
+            except:
+                pass
+                
