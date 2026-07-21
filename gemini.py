@@ -1,20 +1,15 @@
 import os
-import random
 import time
 from google import genai
 
-# قراءة المفاتيح حصرياً من متغيرات البيئة (Environment Variables) لضمان الأمان التام
-env_keys = os.getenv("GEMINI_API_KEYS", "")
-if env_keys:
-    API_KEYS = [k.strip() for k in env_keys.split(",") if k.strip()]
-else:
-    API_KEYS = []
+# قراءة مفتاح API واحد حصرياً من متغيرات البيئة (Environment Variables)
+API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 
-def get_system_client():
-    if not API_KEYS:
-        raise ValueError("❌ خطأ أمني: لم يتم العثور على أي مفتاح API في متغيرات البيئة (GEMINI_API_KEYS).")
-    selected_key = random.choice(API_KEYS)
-    return genai.Client(api_key=selected_key)
+if not API_KEY:
+    raise ValueError("❌ خطأ أمني: لم يتم العثور على مفتاح API في متغيرات البيئة (GEMINI_API_KEY).")
+
+# تهيئة عميل Google GenAI مرة واحدة باستخدام المفتاح الوحيد
+client = genai.Client(api_key=API_KEY)
 
 # تعليمات النظام الموحدة
 SYSTEM_INSTRUCTION = (
@@ -33,7 +28,6 @@ def ask_gemini(question):
     delay = 25
     for attempt in range(max_retries):
         try:
-            client = get_system_client()
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=question,
@@ -57,7 +51,6 @@ def ask_gemini_stream(question):
     delay = 25
     for attempt in range(max_retries):
         try:
-            client = get_system_client()
             response = client.models.generate_content_stream(
                 model="gemini-2.5-flash",
                 contents=question,
