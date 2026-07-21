@@ -6,7 +6,7 @@ import config
 # تهيئة عميل Google GenAI
 client = genai.Client(api_key=config.GEMINI_API_KEY)
 
-# تعليمات النظام الموحدة (مختصرة، مركزة، وأنيقة لتليجرام)
+# تعليمات النظام الموحدة
 SYSTEM_INSTRUCTION = (
     "أنت مساعد ذكي ومحترف. قدم إجابات مركزة، مختصرة، ومباشرة جداً دون إطالة أو حشو مبالغ فيه. "
     "تعليمات التنسيق الصارمة لتليجرام (HTML): "
@@ -19,9 +19,8 @@ SYSTEM_INSTRUCTION = (
 )
 
 def ask_gemini(question):
-    """دالة عادية (احتياطية) لإرجاع الإجابة دفعة واحدة"""
     max_retries = 3
-    delay = 2
+    delay = 25  # البدء بـ 25 ثانية بناءً على مدة الانتظار المقترحة من جوجل
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
@@ -36,24 +35,35 @@ def ask_gemini(question):
             return response.text
         except Exception as e:
             error_str = str(e)
-            if ("503" in error_str or "UNAVAILABLE" in error_str) and attempt < max_retries - 1:
+            if ("429" in error_str or "RESOURCE_EXHAUSTED" in error_str) and attempt < max_retries - 1:
                 time.sleep(delay)
-                delay *= 2
+                delay *= 2  # مضاعفة وقت الانتظار في حال تكرار المحاولة
                 continue
             raise e
 
 def ask_gemini_stream(question):
-    """دالة البث المباشر (للكتابة التدريجية)"""
-    response = client.models.generate_content_stream(
-        model="gemini-2.5-flash",
-        contents=question,
-        config={
-            'system_instruction': SYSTEM_INSTRUCTION,
-            'max_output_tokens': 2000,
-            'temperature': 0.7,
-        }
-    )
-    for chunk in response:
-        if chunk.text:
-            yield chunk.text
+    max_retries = 3
+    delay = 25
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content_stream(
+                model="gemini-2.5-flash",
+                contents=question,
+                config={
+                    'system_instruction': SYSTEM_INSTRUCTION,
+                    'max_output_tokens': 2000,
+                    'temperature': 0.7,
+                }
+            )
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+            return
+        except Exception as e:
+            error_str = str(e)
+            if ("429" in error_str or "RESOURCE_EXHAUSTED" in error_str) and attempt < max_retries - 1:
+                time.sleep(delay)
+                delay *= 2
+                continue
+            raise e
             
