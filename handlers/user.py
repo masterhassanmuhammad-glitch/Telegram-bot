@@ -62,6 +62,39 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
 # 🛠️ الدالة الرئيسية لتسجيل كل معالجات المستخدم (User Handlers)
 def register_user_handlers():
 
+    @bot.message_handler(commands=['ask'])
+    def ask_command(message):
+        question = message.text.replace("/ask", "", 1).strip()
+
+        if not question:
+            bot.reply_to(
+                message,
+                "❌ الاستخدام:\n/ask اكتب سؤالك"
+            )
+            return
+
+        waiting = bot.reply_to(message, "🤖 أفكر...")
+
+        try:
+            answer = ask_gemini(question)
+
+            try:
+                bot.delete_message(message.chat.id, waiting.message_id)
+            except:
+                pass
+
+            for i in range(0, len(answer), 4000):
+                bot.send_message(
+                    message.chat.id,
+                    answer[i:i+4000],
+                    reply_to_message_id=message.message_id
+                )
+
+        except Exception as e:
+            bot.reply_to(message, f"❌ {e}")
+
+    # بقية معالجات user.py...
+
     # 1. أمر البدء (مع الحذف الفوري لرسالة الـ /start)
     @bot.message_handler(commands=['start'])
     def cmd_start(message):
