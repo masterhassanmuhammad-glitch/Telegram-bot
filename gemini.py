@@ -1,20 +1,21 @@
+import os
 from google import genai
 import config
 
+# تهيئة عميل Google GenAI
 client = genai.Client(api_key=config.GEMINI_API_KEY)
 
 def ask_gemini(question):
     max_retries = 3
     delay = 2
     
-    # تعليمات النظام لضمان إخراج الردود بتنسيق HTML متوافق مع تليجرام
-        system_instruction = (
+    # تعليمات النظام لضمان إخراج الردود بتنسيق HTML متوافق مع تليجرام وبدون وسوم مرفوضة
+    system_instruction = (
         "أنت مساعد ذكي ومفيد لطلاب الطب. "
         "قم بتنسيق إجاباتك حصرياً باستخدام وسوم HTML المدعومة فقط في تليجرام: "
         "<b>النص العريض</b>، <i>النص المائل</i>، <code>الكود القصير</code>، و <pre><code>كتلة الكود</code></pre>. "
         "ممنوع منعاً باتاً استخدام وسوم الفقرات مثل <p> أو </p> أو وسوم الأسطر مثل <br>، واستبدل الفواصل بأسطر جديدة عادية."
-        )
-
+    )
     
     for attempt in range(max_retries):
         try:
@@ -29,6 +30,7 @@ def ask_gemini(question):
         except Exception as e:
             error_str = str(e)
             if ("503" in error_str or "UNAVAILABLE" in error_str) and attempt < max_retries - 1:
+                import time
                 time.sleep(delay)
                 delay *= 2
                 continue
