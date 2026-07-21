@@ -74,61 +74,69 @@ def register_user_handlers():
             )
             return
 
-        waiting = bot.reply_to(message, "🤖 أفكر...")
+        # إرسال رسالة مبدئية سيتم تعديلها تدريجياً أثناء الكتابة
+        waiting_msg = bot.reply_to(message, "🤖 جارِ صياغة الإجابة...")
 
         try:
-            # تطبيق آلية إعادة المحاولة عند حدوث ضغط عالي (503)
-            max_retries = 3
-            delay = 2
-            answer = None
+            from gemini import ask_gemini_stream
             
-            for attempt in range(max_retries):
-                try:
-                    answer = ask_gemini(question)
-                    break
-                except Exception as ex:
-                    error_str = str(ex)
-                    if ("503" in error_str or "UNAVAILABLE" in error_str) and attempt < max_retries - 1:
-                        time.sleep(delay)
-                        delay *= 2
-                        continue
-                    raise ex
+            full_text = ""
+            last_edit_time = 0
+            
+            # استقبال الأجزاء تباعاً من جيميناي
+            for chunk_text in ask_gemini_stream(question):
+                full_text += chunk_text
+                
+                # تنظيف النص دورياً من أي وسم غير مدعوم
+                cleaned_text = (
+                    full_text.replace("<p>", "")
+                              .replace("</p>", "\n")
+                              .replace("<br>", "\n")
+                              .replace("<br/>", "\n")
+                )
+                
+                current_time = time.time()
+                # تحديث الرسالة كل 1.5 ثانية تفادياً لقيود وحظر تليجرام (Flood Control)
+                if current_time - last_edit_time > 1.5:
+                    try:
+                        display_text = cleaned_text[:4000] + " ✍️..."
+                        bot.edit_message_text(
+                            chat_id=message.chat.id,
+                            message_id=waiting_msg.message_id,
+                            text=display_text,
+                            parse_mode='HTML'
+                        )
+                        last_edit_time = current_time
+                    except Exception:
+                        pass # تجاهل الخطأ إذا لم تكن هناك تغييرات جوهرية أو تجاوز الحد المؤقت
 
-            try:
-                bot.delete_message(message.chat.id, waiting.message_id)
-            except:
-                pass
+            # التحديث الأخير والنهائي بعد اكتمال النص بالكامل (إزالة علامة الكتابة ✍️)
+            final_text = (
+                full_text.replace("<p>", "")
+                          .replace("</p>", "\n")
+                          .replace("<br>", "\n")
+                          .replace("<br/>", "\n")
+            )[:4000]
 
-            # 🛡️ تنظيف إضافي لاحتواء أي وسم غير مدعوم قد يكتبه النموذج (مثل <p> أو <br>)
-            answer = (
-                answer.replace("<p>", "")
-                      .replace("</p>", "\n")
-                      .replace("<br>", "\n")
-                      .replace("<br/>", "\n")
+            bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=waiting_msg.message_id,
+                text=final_text if final_text else "⚠️ لم يتم استلام أي نص.",
+                parse_mode='HTML'
             )
 
-            # إرسال الرد مقسماً مع تفعيل تنسيق HTML الآمن
-            for i in range(0, len(answer), 4000):
-                bot.send_message(
-                    message.chat.id,
-                    answer[i:i+4000],
-                    parse_mode='HTML',
-                    reply_to_message_id=message.message_id
-                )
-
         except Exception as e:
-            try:
-                bot.delete_message(message.chat.id, waiting.message_id)
-            except:
-                pass
-                
             error_msg = str(e)
-            if "503" in error_msg or "UNAVAILABLE" in error_msg:
-                bot.reply_to(message, "⚠️ خوادم الذكاء الاصطناعي تواجه ضغطاً عالياً حالياً، يرجى المحاولة بعد قليل.")
-            elif "PERMISSION_DENIED" in error_msg or "leaked" in error_msg:
-                bot.reply_to(message, "❌ مفتاح الـ API المستخدم غير صالح أو تم إيقافه لأسباب أمنية.")
-            else:
-                bot.reply_to(message, f"❌ خطأ تقني:\n<code>{error_msg}</code>", parse_mode='HTML')
+            print(f"❌ Stream Error: {error_msg}")
+            try:
+                bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=waiting_msg.message_id,
+                    text=f"❌ حدث خطأ أثناء معالجة الطلب:\n<code>{error_msg}</code>",
+                    parse_mode='HTML'
+                )
+            except:
+                bot.reply_to(message, "❌ حدث خطأ أثناء معالجة الطلب.")
                 
 
     # 1. أمر البدء (مع الحذف الفوري لرسالة الـ /start)
