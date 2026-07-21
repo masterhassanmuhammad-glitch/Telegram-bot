@@ -7,11 +7,26 @@ import re
 client = Groq(api_key=os.getenv("GROQ_API_KEY", ""))
 
 def clean_markdown_to_telegram_html(text):
-    """دالة لضمان تحويل أي ترميز Markdown قد يكتبه الذكاء الاصطناعي إلى وسوم ورموز تيليجرام المتوافقة"""
+    """دالة لضمان تنظيف وإغلاق أي وسوم HTML تفادياً لأخطاء تيليجرام 400"""
     # 1. تحويل **النص العريض** إلى وسوم HTML الصحيحة <b>النص العريض</b>
     text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)
     
-    # 2. استبدال علامات التعداد النجمية أو الشرطات بـ ▪️ بشكل إجباري
+    # 2. تحويل الاقتباسات الفردية (> نص) إلى صندوق اقتباس
+    text = re.sub(r'^\s*>\s+(.*)$', r'<blockquote>\1</blockquote>', text, flags=re.MULTILINE)
+    
+    # 3. التأكد البرمجي من إغلاق أي وسم blockquote مفتوحة لم يغلقها النموذج
+    open_quotes = text.count('<blockquote>')
+    close_quotes = text.count('</blockquote>')
+    if open_quotes > close_quotes:
+        text += '</blockquote>' * (open_quotes - close_quotes)
+        
+    # 4. التأكد البرمجي من إغلاق أي وسم <b> مفتوح
+    open_b = text.count('<b>')
+    close_b = text.count('</b>')
+    if open_b > close_b:
+        text += '</b>' * (open_b - close_b)
+    
+    # 5. استبدال علامات التعداد النجمية أو الشرطات بـ ▪️ بشكل إجباري
     text = re.sub(r'^\s*[\*\-]\s+', '▪️ ', text, flags=re.MULTILINE)
     
     return text
@@ -32,12 +47,11 @@ def register_ai_handlers():
             
         processing_msg = config.bot.reply_to(
             message, 
-            "🤖 جاري التفكير، يرجى الإنتظار...", 
+            "🤖 <b>جاري إعداد إجابة علمية مفصلة وشاملة... / Generating detailed response...</b>", 
             parse_mode="HTML"
         )
         
         try:
-            # إرسال الطلب مع تنبيه صارم للنموذج بعدم استخدام النجوم
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
@@ -50,7 +64,7 @@ def register_ai_handlers():
                             "CRITICAL RULE 2 (Strict HTML Formatting - NO MARKDOWN ALLOWED): "
                             "- NEVER use Markdown asterisks like ** for bold text. Use HTML tags <b>text</b> instead. "
                             "- NEVER use * or - for bullet points. You MUST use '▪️' or '▫️' for all lists. "
-                            "- Use HTML blockquote tags <blockquote>Your text here</blockquote> for important notes or core summaries."
+                            "- Use HTML blockquote tags <blockquote>Your text here</blockquote> for important clinical notes."
                         )
                     },
                     {
@@ -59,15 +73,14 @@ def register_ai_handlers():
                     }
                 ],
                 temperature=0.3,
-                max_tokens=8192,  # أقصى مساحة ممكنة للإجابة المفصلة
+                max_tokens=8192,
             )
             
             answer = completion.choices[0].message.content
             
-            # تطبيق الفلتر البرمجي لتنظيف واستبدال أي علامات بقيت بالخطأ
+            # تطبيق الفلتر الذكي لإغلاق وتصحيح أي وسوم ناقصة تلقائياً
             cleaned_answer = clean_markdown_to_telegram_html(answer)
             
-            # التأكد من عدم تجاوز حدود تيليجرام للرسالة الواحدة (4000 حرف)
             final_text = cleaned_answer[:4000] if len(cleaned_answer) <= 4000 else cleaned_answer[:3997] + "..."
             
             config.bot.edit_message_text(
