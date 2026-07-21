@@ -382,48 +382,6 @@ def register_user_handlers():
         db_admins = execute_query("SELECT admin_id FROM admins WHERE can_feedback = TRUE;", fetch=True)
         for (adm_id,) in db_admins: notify_ids.add(adm_id)
         for static_adm in ADMIN_IDS: notify_ids.add(static_adm)
-            
-        
- @bot.message_handler(commands=['ask'])
- def ask_ai(message):
-    question = message.text.replace("/ask", "", 1).strip()
-
-    if not question:
-        bot.reply_to(
-            message,
-            "❌ الاستخدام:\n\n/ask اكتب سؤالك هنا"
-        )
-        return
-
-    waiting = bot.reply_to(message, "🤖 أفكر...")
-
-    try:
-        answer = ask_gemini(question)
-
-        try:
-            bot.delete_message(message.chat.id, waiting.message_id)
-        except:
-            pass
-
-        # تيليجرام يسمح بحوالي 4096 حرفًا فقط
-        for i in range(0, len(answer), 4000):
-            bot.send_message(
-                message.chat.id,
-                answer[i:i + 4000],
-                reply_to_message_id=message.message_id
-            )
-
-    except Exception as e:
-        try:
-            bot.delete_message(message.chat.id, waiting.message_id)
-        except:
-            pass
-
-        bot.reply_to(
-            message,
-            f"❌ حدث خطأ أثناء الاتصال بـ Gemini.\n\n{e}"
-    )
-
         for admin_id in notify_ids:
             try: bot.send_message(admin_id, admin_notification)
             except: pass
