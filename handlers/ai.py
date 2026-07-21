@@ -21,21 +21,21 @@ def register_ai_handlers():
             
         processing_msg = config.bot.reply_to(
             message, 
-            "🤖 <b>جاري تحليل السؤال وصياغة الإجابة... / Analyzing query...</b>", 
+            "🤖 <b>جاري تحليل السؤال... / Analyzing query...</b>", 
             parse_mode="HTML"
         )
         
         try:
-            # إرسال الطلب مع تعليمات مطابقة اللغة والتنسيق المجمل
+            # إرسال الطلب مع تعليمات صارمة للغة ووسوم HTML
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
                     {
                         "role": "system",
                         "content": (
-                            "أنت مساعد أكاديمي ذكي ومرن لطلاب كلية الطب. "
-                            "قاعدة اللغة الصارمة: أجب حصرياً بنفس لغة سؤال المستخدم (إذا كان السؤال باللغة العربية أجب باللغة العربية الفصحى، وإذا كان بالإنجليزية أجب بالإنجليزية). "
-                            "تعليمات التنسيق: قدم إجابات علمية دقيقة، منسقة بشكل احترافي وجميل جداً، باستخدام العناوين البارزة ورموز التعداد الأنيقة (▪️ أو 🔹) لتسهيل القراءة عبر تيليجرام."
+                            "You are an intelligent and professional academic assistant for medical students. "
+                            "CRITICAL RULE 1 (Language): You MUST reply in the EXACT SAME language as the user's query. If the user's query is in English, reply entirely in English. If it is in Arabic, reply entirely in Arabic.\n"
+                            "CRITICAL RULE 2 (Formatting): Do NOT use Markdown asterisks like ** or *. Instead, use strict HTML tags for formatting (e.g., <b>bold text</b>, <i>italic text</i>) because the output will be parsed as HTML. Keep formatting clean, structured, and professional without any messy artifacts."
                         )
                     },
                     {
@@ -43,7 +43,7 @@ def register_ai_handlers():
                         "content": query
                     }
                 ],
-                temperature=0.7,
+                temperature=0.3, # تقليل درجة الحرارة لمنع تداخل الحروف والأخطاء الإملائية
             )
             
             answer = completion.choices[0].message.content
@@ -51,7 +51,7 @@ def register_ai_handlers():
             config.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=processing_msg.message_id,
-                text=f"{answer}",
+                text=answer,
                 parse_mode="HTML"
             )
             
@@ -61,7 +61,7 @@ def register_ai_handlers():
                 config.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=processing_msg.message_id,
-                    text="⚠️ عذراً، حدث خطأ أثناء الاتصال بخدمة الذكاء الاصطناعي. حاول مرة أخرى لاحقاً.\n⚠️ Sorry, an error occurred. Please try again later."
+                    text="⚠️ عذراً، حدث خطأ أثناء الاتصال بخدمة الذكاء الاصطناعي.\n⚠️ Sorry, an error occurred."
                 )
             except:
                 pass
