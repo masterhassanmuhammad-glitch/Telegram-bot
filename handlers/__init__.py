@@ -1,7 +1,6 @@
 from .admin import register_admin_handlers  
 from .user import register_user_handlers
-from .owner import register_owner_handlers
-from .ai import register_ai_handlers        # استيراد معالجات الذكاء الاصطناعي
+from .owner import register_owner_handlers        
 from .fallback import register_fallback_handlers  # الـ fallback يكون في النهاية تماماً
 
 def init_handlers():
@@ -9,5 +8,4 @@ def init_handlers():
     register_admin_handlers() 
     register_user_handlers()
     register_owner_handlers()
-    register_ai_handlers()        # تسجيل أمر /ask الخاص بالذكاء الاصطناعي
     register_fallback_handlers()  # الـ Fallback يلتقط الباقي فقط
