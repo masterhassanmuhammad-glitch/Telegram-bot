@@ -74,17 +74,21 @@ def register_user_handlers():
     """
 
     # 🤖 0. معالج الذكاء الاصطناعي المباشر
+
     @bot.message_handler(func=lambda message: True, content_types=['text'])
     def auto_ai_handler(message):
-        # 🚫 تجاهل المجموعات والقنوات
+        # 🟢 طباعة في الـ Logs لتأكيد وصول الرسالة لـ Render
+        print(f"📩 [Received] User: {message.from_user.username or message.from_user.id} | Text: {message.text}")
+
+        # 🚫 1. تجاهل المجموعات والقنوات
         if message.chat.type in ['group', 'supergroup']:
             return
 
-        # 🚫 تجاهل الأوامر التي تبدأ بـ / (مثل /start)
+        # 🚫 2. تجاهل الأوامر التي تبدأ بـ / (مثل /start)
         if message.text.startswith('/'):
             return
 
-        # 🚫 تجاهل الحالات الإدارية والتفاعلية (كالإذاعة، الإعدادات...)
+        # 🚫 3. تجاهل الحالات الإدارية والتفاعلية (كالإذاعة وإضافة الأزرار)
         if get_user_state(message.from_user.id):
             return
 
@@ -92,11 +96,11 @@ def register_user_handlers():
         if not text:
             return
 
-        # 📝 تسجيل النص في قاعدة البيانات
         user_id = message.from_user.id
         username = message.from_user.username or "NoUsername"
         chat_id = message.chat.id
 
+        # 📝 4. تسجيل النص والسؤال في قاعدة البيانات تلقائياً
         log_command(
             user_id=user_id,
             username=username,
@@ -110,6 +114,7 @@ def register_user_handlers():
             full_text = ""
             last_edit_time = 0
 
+            # 🤖 5. البث المباشر للإجابة من Gemini
             for chunk_text in ask_gemini_stream(text):
                 full_text += chunk_text
 
@@ -162,8 +167,7 @@ def register_user_handlers():
             except Exception:
                 pass
             bot.reply_to(message, "❌ حدث خطأ أثناء معالجة الطلب.")
-
-
+            
     # 1. أمر البدء (مع الحذف الفوري لرسالة الـ /start)
     @bot.message_handler(commands=['start'])
     def cmd_start(message):
