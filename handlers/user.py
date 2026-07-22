@@ -67,121 +67,22 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
 
 
 # 🛠️ الدالة الرئيسية لتسجيل كل معالجات المستخدم (User Handlers)
-
 def register_user_handlers():
-    """
-    تسجيل كافة معالجات المستخدم والذكاء الاصطناعي
-    """
 
-    # 🤖 0. معالج الذكاء الاصطناعي المباشر
-
-    @bot.message_handler(func=lambda message: True, content_types=['text'])
-    def auto_ai_handler(message):
-        # 🟢 طباعة في الـ Logs لتأكيد وصول الرسالة لـ Render
-        print(f"📩 [Received] User: {message.from_user.username or message.from_user.id} | Text: {message.text}")
-
-        # 🚫 1. تجاهل المجموعات والقنوات
-        if message.chat.type in ['group', 'supergroup']:
-            return
-
-        # 🚫 2. تجاهل الأوامر التي تبدأ بـ / (مثل /start)
-        if message.text.startswith('/'):
-            return
-
-        # 🚫 3. تجاهل الحالات الإدارية والتفاعلية (كالإذاعة وإضافة الأزرار)
-        if get_user_state(message.from_user.id):
-            return
-
-        text = message.text.strip()
-        if not text:
-            return
-
-        user_id = message.from_user.id
-        username = message.from_user.username or "NoUsername"
-        chat_id = message.chat.id
-
-        # 📝 4. تسجيل النص والسؤال في قاعدة البيانات تلقائياً
-        log_command(
-            user_id=user_id,
-            username=username,
-            command="/ask",
-            prompt=text
-        )
-
-        waiting_msg = bot.reply_to(message, "🤖 جارِ التفكير، يرجى الإنتظار...")
-
-        try:
-            full_text = ""
-            last_edit_time = 0
-
-            # 🤖 5. البث المباشر للإجابة من Gemini
-            for chunk_text in ask_gemini_stream(text):
-                full_text += chunk_text
-
-                cleaned_text = (
-                    full_text.replace("<p>", "")
-                    .replace("</p>", "\n")
-                    .replace("<br>", "\n")
-                    .replace("<br/>", "\n")
-                )
-
-                current_time = time.time()
-
-                if current_time - last_edit_time > 1.5:
-                    try:
-                        bot.edit_message_text(
-                            chat_id=chat_id,
-                            message_id=waiting_msg.message_id,
-                            text=cleaned_text[:4000] + " ✍️...",
-                            parse_mode="HTML"
-                        )
-                        last_edit_time = current_time
-                    except Exception:
-                        pass
-
-            final_text = (
-                full_text.replace("<p>", "")
-                .replace("</p>", "\n")
-                .replace("<br>", "\n")
-                .replace("<br/>", "\n")
-            )[:4000]
-
-            try:
-                bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=waiting_msg.message_id,
-                    text=final_text if final_text else "⚠️ لم يتم استلام أي نص.",
-                    parse_mode="HTML"
-                )
-            except Exception:
-                bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=waiting_msg.message_id,
-                    text=final_text if final_text else "⚠️ لم يتم استلام أي نص."
-                )
-
-        except Exception as e:
-            print(f"❌ AI Error: {e}")
-            try:
-                bot.delete_message(chat_id, waiting_msg.message_id)
-            except Exception:
-                pass
-            bot.reply_to(message, "❌ حدث خطأ أثناء معالجة الطلب.")
-            
-    # 1. أمر البدء (مع الحذف الفوري لرسالة الـ /start)
+    # 1. أمر البدء (مع الحذف الفوري لرسالة الـ /start وتسجيل اللوج)
     @bot.message_handler(commands=['start'])
     def cmd_start(message):
         chat_id = message.chat.id
         user_id = message.from_user.id
         username = message.from_user.username or "NoUsername"
 
-        # 📝 تسجيل استخدام أمر /start فور وصول الطلب
+        # 📝 تسجيل استخدام أمر /start
         log_command(
             user_id=user_id,
             username=username,
             command="/start"
         )
-        
+
         # حذف رسالة الـ /start التي أرسلها المستخدم فوراً
         try: bot.delete_message(chat_id, message.message_id)
         except Exception: pass
@@ -219,7 +120,6 @@ def register_user_handlers():
             return
 
         show_main_menu(chat_id, user_id)
-
 
     # 2. وظيفة طلب رقم الهاتف
     def ask_for_phone(chat_id, user_id):
@@ -287,7 +187,6 @@ def register_user_handlers():
         else:
             bot.answer_callback_query(call.id, "عذراً، أنت لست عضواً في كلية الطب من الدفعتين 35&36", show_alert=True)
 
-
     # 5. عرض القائمة الرئيسية (الحارس المركزي للمنيو)
     def show_main_menu(chat_id, user_id):
         # التحقق من انضمام المستخدم للدفعة
@@ -304,7 +203,7 @@ def register_user_handlers():
 📖 سورة المجادلة: 11"""
 
         bot.send_message(chat_id, text, reply_markup=make_main_menu_markup(perms, user_id))
-        
+
     # 6. العودة للمنيو الرئيسي
     @bot.callback_query_handler(func=lambda call: call.data == "main_menu")
     def cb_main_menu(call):
@@ -470,4 +369,94 @@ def register_user_handlers():
         bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
         
         show_main_menu(message.chat.id, user_id)
-            
+
+    # 🤖 8. معالج الرد التلقائي عبر الذكاء الاصطناعي (يوضع دائماً في النهاية للتقاط أي نص عادي)
+    @bot.message_handler(func=lambda message: True, content_types=['text'])
+    def auto_ai_handler(message):
+        # 🚫 تجاهل المجموعات والقنوات
+        if message.chat.type in ['group', 'supergroup']:
+            return
+
+        # 🚫 تجاهل الأوامر التي تبدأ بـ / (مثل /start)
+        if message.text.startswith('/'):
+            return
+
+        # 🚫 تجاهل الحالات الإدارية والتفاعلية (كالإذاعة، وإرسال الملاحظات...)
+        if get_user_state(message.from_user.id):
+            return
+
+        text = message.text.strip()
+        if not text:
+            return
+
+        user_id = message.from_user.id
+        username = message.from_user.username or "NoUsername"
+        chat_id = message.chat.id
+
+        # 📝 تسجيل النص والأسئلة في السجلات
+        log_command(
+            user_id=user_id,
+            username=username,
+            command="/ask",
+            prompt=text
+        )
+
+        waiting_msg = bot.reply_to(message, "🤖 جارِ التفكير، يرجى الإنتظار...")
+
+        try:
+            full_text = ""
+            last_edit_time = 0
+
+            for chunk_text in ask_gemini_stream(text):
+                full_text += chunk_text
+
+                cleaned_text = (
+                    full_text.replace("<p>", "")
+                    .replace("</p>", "\n")
+                    .replace("<br>", "\n")
+                    .replace("<br/>", "\n")
+                )
+
+                current_time = time.time()
+
+                if current_time - last_edit_time > 1.5:
+                    try:
+                        bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=waiting_msg.message_id,
+                            text=cleaned_text[:4000] + " ✍️...",
+                            parse_mode="HTML"
+                        )
+                        last_edit_time = current_time
+                    except Exception:
+                        pass
+
+            final_text = (
+                full_text.replace("<p>", "")
+                .replace("</p>", "\n")
+                .replace("<br>", "\n")
+                .replace("<br/>", "\n")
+            )[:4000]
+
+            try:
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=waiting_msg.message_id,
+                    text=final_text if final_text else "⚠️ لم يتم استلام أي نص.",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=waiting_msg.message_id,
+                    text=final_text if final_text else "⚠️ لم يتم استلام أي نص."
+                )
+
+        except Exception as e:
+            print(f"❌ AI Error: {e}")
+            try:
+                bot.delete_message(chat_id, waiting_msg.message_id)
+            except Exception:
+                pass
+            bot.reply_to(message, "❌ حدث خطأ أثناء معالجة الطلب.")
+    
