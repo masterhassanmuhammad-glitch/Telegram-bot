@@ -54,7 +54,7 @@ def ask_gemini(question):
                     contents=question,
                     config={
                         'system_instruction': SYSTEM_INSTRUCTION,
-                        'max_output_tokens': 1000,
+                        'max_output_tokens': 1300,
                         'temperature': 0.7,
                     }
                 )
