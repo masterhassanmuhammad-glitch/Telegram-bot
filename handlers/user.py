@@ -73,12 +73,15 @@ def register_user_handlers():
 
     @bot.message_handler(commands=['ask'])
     def ask_command(message):
-        user_id = message.from_user.id
-        username = message.from_user.username or "NoUsername"
         question = message.text.replace("/ask", "", 1).strip()
 
-        # 📝 [إضافة جديد] تسجيل أمر /ask والسؤال في قاعدة البيانات
-        log_command(user_id, username, "/ask", question if question else None)
+        # 📝 تسجيل استخدام أمر /ask في قاعدة البيانات
+        log_command(
+            user_id=message.from_user.id,
+            username=message.from_user.username or "NoUsername",
+            command="/ask",
+            prompt=question if question else None
+        )
 
         if not question:
             bot.reply_to(
@@ -139,7 +142,7 @@ def register_user_handlers():
                     message.chat.id,
                     waiting_msg.message_id
                 )
-            except Exception:
+            except:
                 pass
 
             bot.reply_to(
@@ -153,17 +156,20 @@ def register_user_handlers():
         chat_id = message.chat.id
         user_id = message.from_user.id
         username = message.from_user.username or "NoUsername"
+
+        # 📝 تسجيل استخدام أمر /start فور وصول الطلب
+        log_command(
+            user_id=user_id,
+            username=username,
+            command="/start"
+        )
+        
+        # حذف رسالة الـ /start التي أرسلها المستخدم فوراً
+        try: bot.delete_message(chat_id, message.message_id)
+        except Exception: pass
+
         first_name = message.from_user.first_name or ""
         last_name = message.from_user.last_name or ""
-
-        # 📝 [إضافة جديد] تسجيل استخدام أمر /start فور استلامه
-        log_command(user_id, username, "/start")
-
-        # حذف رسالة الـ /start التي أرسلها المستخدم فوراً
-        try: 
-            bot.delete_message(chat_id, message.message_id)
-        except Exception: 
-            pass
 
         clear_user_state(user_id)
 
@@ -195,7 +201,7 @@ def register_user_handlers():
             return
 
         show_main_menu(chat_id, user_id)
-                    
+                            
 
     # 2. وظيفة طلب رقم الهاتف
     def ask_for_phone(chat_id, user_id):
