@@ -11,7 +11,7 @@ def make_main_menu_markup(perms, user_id=None):
         fetch=True
     )
     
-    # تجميع الأزرار المخصصة في أسطر بناءً على إعدادات الآدمن
+    # تجميع الأزرار المخصصة في أسطر بناءً على إعدادات الأدمن
     rows = {}
     for btn_id, btn_name, row_num in main_buttons:
         if row_num not in rows:
@@ -40,12 +40,13 @@ def make_main_menu_markup(perms, user_id=None):
         if row_buttons:
             markup.row(*row_buttons)
             
+        # 🟢 [اصلاح]: نقل زر إدارة السجلات ليكون داخل أزرار الأدمن فقط
+        markup.add(InlineKeyboardButton(text="📜 إدارة السجلات", callback_data="admin_logs_menu"))
+
         # زر إدارة المشرفين يظهر للمالك فقط
         if perms.get('is_owner') or user_id == OWNER_ID:
             markup.add(InlineKeyboardButton(text="👥 إدارة المشرفين", callback_data="owner_manage_admins"))
 
-    markup.add(InlineKeyboardButton("📜 إدارة السجلات", callback_data="admin_logs_menu"))
-    
     # زر مراسلة الإدارة الثابت للجميع (في آخر القائمة دائماً)
     markup.add(InlineKeyboardButton(text="📬 مراسلة الإدارة", callback_data="user_contact"))
     
@@ -76,7 +77,8 @@ def make_sub_menu_markup(parent_id, is_admin=False):
     parent_info = execute_query("SELECT parent_id FROM buttons WHERE id = %s;", (parent_id,), fetch=True)
     back_id = parent_info[0][0] if parent_info else None
     
-    back_callback = f"open_{back_id}" if back_id is not None else "main_menu"
+    # 🟢 [إصلاح]: تغيير open_ إلى back_ لمنع إعادة إرسال الملفات عند العودة للخلف
+    back_callback = f"back_{back_id}" if back_id is not None else "main_menu"
     markup.add(InlineKeyboardButton(text="🔙 عودة للخلف", callback_data=back_callback))
     
     return markup
@@ -110,7 +112,6 @@ def make_admin_edit_options_markup(button_id):
 def make_admin_choose_parent_markup(button_name, exclude_id=None):
     markup = InlineKeyboardMarkup(row_width=1)
     
-    # قص الاسم لـ 15 حرف كحد أقصى لضمان عدم تجاوز الـ 64 بايت مع الحروف العربية
     short_name = button_name[:15]
     
     markup.add(InlineKeyboardButton(text="📁 في القائمة الرئيسية مباشرة", callback_data=f"setparent_new_{short_name}_null"))
@@ -124,7 +125,6 @@ def make_admin_choose_parent_markup(button_name, exclude_id=None):
         markup.add(InlineKeyboardButton(text=f"📁 داخل [ {b_name} ]", callback_data=f"setparent_new_{short_name}_{b_id}"))
         
     return markup
-    
 
 
 def make_admin_move_button_markup(button_id):
@@ -162,11 +162,9 @@ def make_owner_manage_admins_markup():
     return markup
 
 
-# 🛠️ الدالة المحدثة كلياً لعرض الاسم الفعلي ورقم الهاتف عند الإزالة
 def make_remove_admin_list_markup():
     markup = InlineKeyboardMarkup(row_width=1)
     
-    # جلب معرف المشرف والاسم ورقم الهاتف عبر LEFT JOIN مع جدول الـ users
     admins = execute_query("""
         SELECT a.admin_id, u.first_name, u.last_name, u.phone_number 
         FROM admins a
@@ -177,13 +175,11 @@ def make_remove_admin_list_markup():
         for row in admins:
             adm_id, first_name, last_name, phone = row
             
-            # التحقق من وجود الاسم الأول للمستخدم لبناء الاسم الكامل
             if first_name:
                 full_name = f"{first_name} {last_name or ''}".strip()
             else:
                 full_name = f"المشرف ({adm_id})"
             
-            # دمج رقم الهاتف في نص الزر إن وجد بصيغة أنيقة
             phone_suffix = f" 📱 {phone}" if phone else " (بلا هاتف)"
             button_text = f"❌ إزالة {full_name}{phone_suffix}"
             
@@ -211,4 +207,4 @@ def make_permissions_markup(perms_dict, new_admin_id):
         InlineKeyboardButton(text="🔙 إلغاء والعودة", callback_data="owner_manage_admins")
     )
     return markup
-            
+    
