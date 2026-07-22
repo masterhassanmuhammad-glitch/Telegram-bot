@@ -1,4 +1,5 @@
 import time
+from database import log_command
 from gemini import ask_gemini_stream
 from telebot import types
 from .helpers import (
