@@ -43,6 +43,8 @@ def make_main_menu_markup(perms, user_id=None):
         # زر إدارة المشرفين يظهر للمالك فقط
         if perms.get('is_owner') or user_id == OWNER_ID:
             markup.add(InlineKeyboardButton(text="👥 إدارة المشرفين", callback_data="owner_manage_admins"))
+
+    markup.add(InlineKeyboardButton("📜 إدارة السجلات", callback_data="admin_logs_menu"))
     
     # زر مراسلة الإدارة الثابت للجميع (في آخر القائمة دائماً)
     markup.add(InlineKeyboardButton(text="📬 مراسلة الإدارة", callback_data="user_contact"))
