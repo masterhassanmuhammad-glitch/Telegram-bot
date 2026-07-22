@@ -74,7 +74,7 @@ def register_user_handlers():
             )
             return
 
-        waiting_msg = bot.reply_to(message, "🤖 جارِ صياغة الإجابة...")
+        waiting_msg = bot.reply_to(message, "🤖 جارِ التفكير، يرجى الإنتظار...")
 
         try:
             full_text = ""
