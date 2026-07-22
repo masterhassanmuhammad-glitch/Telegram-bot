@@ -68,7 +68,6 @@ def register_user_handlers():
         """
     تسجيل معالجات المستخدم والذكاء الاصطناعي
     """
-
     @bot.message_handler(func=lambda message: True, content_types=['text'])
     def auto_ai_handler(message):
         # 🚫 تجاهل المجموعات والقنوات
