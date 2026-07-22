@@ -8,12 +8,21 @@ def register_logs_handlers():
     """
 
     # 1️⃣ القائمة الرئيسية للوحة التحكم بالسجلات
+    # 1. القائمة الرئيسية للوحة السجلات
     @bot.callback_query_handler(func=lambda call: call.data == "admin_logs_menu")
     def cb_admin_logs_menu(call):
+        # 🔒 حماية: المالك فقط من يصل لهذه اللوحة
+        if call.from_user.id != OWNER_ID:
+            bot.answer_callback_query(call.id, "❌ هذه اللوحة مخصصة لمالك البوت فقط!", show_alert=True)
+            return
+
         bot.answer_callback_query(call.id)
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton("📊 سجلات /start", callback_data="view_start_logs"))
         markup.add(InlineKeyboardButton("🤖 سجلات /ask (الأسئلة)", callback_data="view_ask_logs"))
+        
+        # 🟢 زر العودة للقائمة الرئيسية
+        markup.add(InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="main_menu"))
         
         bot.edit_message_text(
             chat_id=call.message.chat.id,
@@ -22,6 +31,7 @@ def register_logs_handlers():
             parse_mode="Markdown",
             reply_markup=markup
         )
+        
 
     # 2️⃣ عرض سجلات /start + زر الحذف
     @bot.callback_query_handler(func=lambda call: call.data == "view_start_logs")
