@@ -1,4 +1,5 @@
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from config import bot, OWNER_ID
 from config import bot
 from database import execute_query
 
