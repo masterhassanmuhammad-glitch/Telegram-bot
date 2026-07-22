@@ -29,11 +29,11 @@ def ask_gemini(question):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3.5-flash-lite",
                 contents=question,
                 config={
                     'system_instruction': SYSTEM_INSTRUCTION,
-                    'max_output_tokens': 2000,
+                    'max_output_tokens': 500,
                     'temperature': 0.7,
                 }
             )
