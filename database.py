@@ -44,34 +44,27 @@ def execute_query_dict(query, params=()):
 
 def init_db():
     # إنشاء جداول قاعدة البيانات عند التشغيل الأول للبوت
-    # database.py (أضف هذا التعريف داخل دالة init_db)
-
-    # 6. جدول المشرفين الفرعيين وصلاحياتهم
-    execute_query('''
-        CREATE TABLE IF NOT EXISTS admins (
-            admin_id BIGINT PRIMARY KEY,
-            can_settings BOOLEAN DEFAULT FALSE,
-            can_broadcast BOOLEAN DEFAULT FALSE,
-            can_feedback BOOLEAN DEFAULT FALSE,
-            can_count BOOLEAN DEFAULT FALSE
-        );
-    ''', commit=True)
     
-    # 1. جدول المستخدمين (لإحصاء وحفظ المشتركين للبث الجماعي)
+    # 1. جدول المستخدمين (حفظ بيانات الطلاب للمراسلة الجماعية والتأكد من التسجيل)
     execute_query('''
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY,
-            username VARCHAR(255)
+            username VARCHAR(255),
+            first_name VARCHAR(255),
+            last_name VARCHAR(255),
+            phone_number VARCHAR(50)
         );
     ''', commit=True)
     
-    # 2. جدول الأزرار الشجرية (ديناميكية بالكامل)
+    # 2. جدول الأزرار الشجرية (ديناميكية بالكامل وترتيب صفوفها)
     execute_query('''
         CREATE TABLE IF NOT EXISTS buttons (
             id SERIAL PRIMARY KEY,
             name VARCHAR(255) NOT NULL,
             parent_id INTEGER REFERENCES buttons(id) ON DELETE CASCADE,
-            message_text TEXT
+            message_text TEXT,
+            row_number INTEGER DEFAULT 1,
+            sort_order INTEGER DEFAULT 1
         );
     ''', commit=True)
     
@@ -102,6 +95,29 @@ def init_db():
             user_id BIGINT PRIMARY KEY,
             state VARCHAR(100) NOT NULL,
             data TEXT DEFAULT '{}'
+        );
+    ''', commit=True)
+
+    # 6. جدول المشرفين الفرعيين وصلاحياتهم
+    execute_query('''
+        CREATE TABLE IF NOT EXISTS admins (
+            admin_id BIGINT PRIMARY KEY,
+            can_settings BOOLEAN DEFAULT FALSE,
+            can_broadcast BOOLEAN DEFAULT FALSE,
+            can_feedback BOOLEAN DEFAULT FALSE,
+            can_count BOOLEAN DEFAULT FALSE
+        );
+    ''', commit=True)
+
+    # 7. جدول سجلات الأوامر (حفظ استخدام /start و /ask والأسئلة الموجهة للذكاء الاصطناعي)
+    execute_query('''
+        CREATE TABLE IF NOT EXISTS command_logs (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            username VARCHAR(255),
+            command VARCHAR(50) NOT NULL,
+            prompt TEXT,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
     ''', commit=True)
 
