@@ -1,17 +1,22 @@
 import time
-from database import log_command
-from gemini import ask_gemini_stream
 from telebot import types
+from gemini import ask_gemini_stream
+
+from config import bot, OWNER_ID, ADMIN_IDS
+from database import (
+    log_command,
+    execute_query,
+    set_user_state,
+    get_user_state,
+    clear_user_state
+)
+from keyboards import make_main_menu_markup, make_sub_menu_markup
 from .helpers import (
     is_user_in_batch,
     send_join_request_menu,
     get_permissions,
     check_state
 )
-
-from config import bot, OWNER_ID, ADMIN_IDS
-from database import execute_query, set_user_state, clear_user_state
-from keyboards import make_main_menu_markup, make_sub_menu_markup
 
 PAGE_SIZE = 10  # عدد الملفات في كل صفحة
 
@@ -64,10 +69,11 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
 # 🛠️ الدالة الرئيسية لتسجيل كل معالجات المستخدم (User Handlers)
 
 def register_user_handlers():
-
-        """
-    تسجيل معالجات المستخدم والذكاء الاصطناعي
     """
+    تسجيل كافة معالجات المستخدم والذكاء الاصطناعي
+    """
+
+    # 🤖 0. معالج الذكاء الاصطناعي المباشر
     @bot.message_handler(func=lambda message: True, content_types=['text'])
     def auto_ai_handler(message):
         # 🚫 تجاهل المجموعات والقنوات
@@ -156,7 +162,7 @@ def register_user_handlers():
             except Exception:
                 pass
             bot.reply_to(message, "❌ حدث خطأ أثناء معالجة الطلب.")
-                
+
 
     # 1. أمر البدء (مع الحذف الفوري لرسالة الـ /start)
     @bot.message_handler(commands=['start'])
@@ -209,7 +215,7 @@ def register_user_handlers():
             return
 
         show_main_menu(chat_id, user_id)
-                            
+
 
     # 2. وظيفة طلب رقم الهاتف
     def ask_for_phone(chat_id, user_id):
@@ -295,7 +301,6 @@ def register_user_handlers():
 
         bot.send_message(chat_id, text, reply_markup=make_main_menu_markup(perms, user_id))
         
-
     # 6. العودة للمنيو الرئيسي
     @bot.callback_query_handler(func=lambda call: call.data == "main_menu")
     def cb_main_menu(call):
@@ -461,3 +466,4 @@ def register_user_handlers():
         bot.send_message(user_id, "✅ تم إرسال رسالتك للمشرفين بنجاح!")
         
         show_main_menu(message.chat.id, user_id)
+            
