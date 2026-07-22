@@ -136,14 +136,15 @@ def set_user_state(user_id, state, data_dict=None):
 def get_user_state(user_id):
     query = 'SELECT state, data FROM user_states WHERE user_id = %s;'
     res = execute_query(query, (user_id,), fetch=True)
-    if res:
+    if res and res[0][0]:
         state, data_str = res[0]
         try:
             data = json.loads(data_str)
-        except:
+        except Exception:
             data = {}
         return state, data
-    return None, {}
+    # إرجاع None صريحة لضمان تقييمها كـ False في الشروط
+    return None
 
 def clear_user_state(user_id):
     query = 'DELETE FROM user_states WHERE user_id = %s;'
