@@ -113,4 +113,17 @@ def register_logs_handlers():
         execute_query("DELETE FROM command_logs WHERE command = '/ask';", commit=True)
         bot.answer_callback_query(call.id, "✅ تم مسح جميع سجلات /ask بنجاح!", show_alert=True)
         cb_view_ask_logs(call)
-              
+
+def create_logs_table_if_not_exists():
+    query = """
+    CREATE TABLE IF NOT EXISTS command_logs (
+        id SERIAL PRIMARY KEY,
+        user_id BIGINT NOT NULL,
+        username VARCHAR(255),
+        command VARCHAR(50) NOT NULL,
+        prompt TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    """
+    execute_query(query, commit=True)
+    
