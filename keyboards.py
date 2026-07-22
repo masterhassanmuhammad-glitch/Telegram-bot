@@ -26,7 +26,7 @@ def make_main_menu_markup(perms, user_id=None):
     if perms.get('is_admin'):
         row_buttons = []
         
-        # أزرار الصلاحيات الفردية
+        # أزرار الصلاحيات الفردية للمشرفين
         if perms.get('can_settings'):
             markup.add(InlineKeyboardButton(text="⚙️ الإعدادات الإدارية", callback_data="admin_settings"))
         if perms.get('can_broadcast'):
@@ -40,18 +40,16 @@ def make_main_menu_markup(perms, user_id=None):
         if row_buttons:
             markup.row(*row_buttons)
             
-        # 🟢 [اصلاح]: نقل زر إدارة السجلات ليكون داخل أزرار الأدمن فقط
-        markup.add(InlineKeyboardButton(text="📜 إدارة السجلات", callback_data="admin_logs_menu"))
-
-        # زر إدارة المشرفين يظهر للمالك فقط
+        # 👑 أزرار خاصة بمالك البوت فقط
         if perms.get('is_owner') or user_id == OWNER_ID:
+            markup.add(InlineKeyboardButton(text="📜 إدارة السجلات", callback_data="admin_logs_menu"))
             markup.add(InlineKeyboardButton(text="👥 إدارة المشرفين", callback_data="owner_manage_admins"))
 
     # زر مراسلة الإدارة الثابت للجميع (في آخر القائمة دائماً)
     markup.add(InlineKeyboardButton(text="📬 مراسلة الإدارة", callback_data="user_contact"))
     
     return markup
-
+    
 
 def make_sub_menu_markup(parent_id, is_admin=False):
     markup = InlineKeyboardMarkup(row_width=2)
