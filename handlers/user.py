@@ -1,4 +1,5 @@
 import time
+from gemini import ask_gemini_stream
 from telebot import types
 from .helpers import (
     is_user_in_batch,
@@ -61,6 +62,77 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
 
 # 🛠️ الدالة الرئيسية لتسجيل كل معالجات المستخدم (User Handlers)
 def register_user_handlers():
+
+    @bot.message_handler(commands=['ask'])
+    def ask_command(message):
+        question = message.text.replace("/ask", "", 1).strip()
+
+        if not question:
+            bot.reply_to(
+                message,
+                "❌ الاستخدام:\n/ask اكتب سؤالك"
+            )
+            return
+
+        waiting_msg = bot.reply_to(message, "🤖 جارِ صياغة الإجابة...")
+
+        try:
+            full_text = ""
+            last_edit_time = 0
+
+            for chunk_text in ask_gemini_stream(question):
+                full_text += chunk_text
+
+                cleaned_text = (
+                    full_text.replace("<p>", "")
+                    .replace("</p>", "\n")
+                    .replace("<br>", "\n")
+                    .replace("<br/>", "\n")
+                )
+
+                current_time = time.time()
+
+                if current_time - last_edit_time > 1.5:
+                    try:
+                        bot.edit_message_text(
+                            chat_id=message.chat.id,
+                            message_id=waiting_msg.message_id,
+                            text=cleaned_text[:4000] + " ✍️...",
+                            parse_mode="HTML"
+                        )
+                        last_edit_time = current_time
+                    except Exception:
+                        pass
+
+            final_text = (
+                full_text.replace("<p>", "")
+                .replace("</p>", "\n")
+                .replace("<br>", "\n")
+                .replace("<br/>", "\n")
+            )[:4000]
+
+            bot.edit_message_text(
+                chat_id=message.chat.id,
+                message_id=waiting_msg.message_id,
+                text=final_text if final_text else "⚠️ لم يتم استلام أي نص.",
+                parse_mode="HTML"
+            )
+
+        except Exception as e:
+            print(f"❌ Ask Error: {e}")
+
+            try:
+                bot.delete_message(
+                    message.chat.id,
+                    waiting_msg.message_id
+                )
+            except:
+                pass
+
+            bot.reply_to(
+                message,
+                "❌ حدث خطأ أثناء معالجة الطلب."
+            )
 
     # 1. أمر البدء (مع الحذف الفوري لرسالة الـ /start)
     @bot.message_handler(commands=['start'])
