@@ -65,24 +65,39 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
 
 def register_user_handlers():
 
-    @bot.message_handler(commands=['ask'])
-    def ask_command(message):
-        question = message.text.replace("/ask", "", 1).strip()
+        """
+    تسجيل معالجات المستخدم والذكاء الاصطناعي
+    """
 
-        # 📝 تسجيل استخدام أمر /ask في قاعدة البيانات
-        log_command(
-            user_id=message.from_user.id,
-            username=message.from_user.username or "NoUsername",
-            command="/ask",
-            prompt=question if question else None
-        )
-
-        if not question:
-            bot.reply_to(
-                message,
-                "❌ الاستخدام:\n/ask اكتب سؤالك"
-            )
+    @bot.message_handler(func=lambda message: True, content_types=['text'])
+    def auto_ai_handler(message):
+        # 🚫 تجاهل المجموعات والقنوات
+        if message.chat.type in ['group', 'supergroup']:
             return
+
+        # 🚫 تجاهل الأوامر التي تبدأ بـ / (مثل /start)
+        if message.text.startswith('/'):
+            return
+
+        # 🚫 تجاهل الحالات الإدارية والتفاعلية (كالإذاعة، الإعدادات...)
+        if get_user_state(message.from_user.id):
+            return
+
+        text = message.text.strip()
+        if not text:
+            return
+
+        # 📝 تسجيل النص في قاعدة البيانات
+        user_id = message.from_user.id
+        username = message.from_user.username or "NoUsername"
+        chat_id = message.chat.id
+
+        log_command(
+            user_id=user_id,
+            username=username,
+            command="/ask",
+            prompt=text
+        )
 
         waiting_msg = bot.reply_to(message, "🤖 جارِ التفكير، يرجى الإنتظار...")
 
@@ -90,7 +105,7 @@ def register_user_handlers():
             full_text = ""
             last_edit_time = 0
 
-            for chunk_text in ask_gemini_stream(question):
+            for chunk_text in ask_gemini_stream(text):
                 full_text += chunk_text
 
                 cleaned_text = (
@@ -105,7 +120,7 @@ def register_user_handlers():
                 if current_time - last_edit_time > 1.5:
                     try:
                         bot.edit_message_text(
-                            chat_id=message.chat.id,
+                            chat_id=chat_id,
                             message_id=waiting_msg.message_id,
                             text=cleaned_text[:4000] + " ✍️...",
                             parse_mode="HTML"
@@ -121,28 +136,28 @@ def register_user_handlers():
                 .replace("<br/>", "\n")
             )[:4000]
 
-            bot.edit_message_text(
-                chat_id=message.chat.id,
-                message_id=waiting_msg.message_id,
-                text=final_text if final_text else "⚠️ لم يتم استلام أي نص.",
-                parse_mode="HTML"
-            )
+            try:
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=waiting_msg.message_id,
+                    text=final_text if final_text else "⚠️ لم يتم استلام أي نص.",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=waiting_msg.message_id,
+                    text=final_text if final_text else "⚠️ لم يتم استلام أي نص."
+                )
 
         except Exception as e:
-            print(f"❌ Ask Error: {e}")
-
+            print(f"❌ AI Error: {e}")
             try:
-                bot.delete_message(
-                    message.chat.id,
-                    waiting_msg.message_id
-                )
-            except:
+                bot.delete_message(chat_id, waiting_msg.message_id)
+            except Exception:
                 pass
-
-            bot.reply_to(
-                message,
-                "❌ حدث خطأ أثناء معالجة الطلب."
-            )
+            bot.reply_to(message, "❌ حدث خطأ أثناء معالجة الطلب.")
+                
 
     # 1. أمر البدء (مع الحذف الفوري لرسالة الـ /start)
     @bot.message_handler(commands=['start'])
