@@ -62,12 +62,6 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
 
 
 # 🛠️ الدالة الرئيسية لتسجيل كل معالجات المستخدم (User Handlers)
-        # التحقق أولاً: إذا لم يكن في القناة، أرسل رسالة الانضمام واقطع التنفيذ فوراً دون حفظه
-        if not is_user_in_batch(bot, user_id):
-            send_join_request_menu(bot, chat_id)
-            return
-
-        # الحفظ في قاعدة البيانات يتم هنا فقط بعد تخطي الفحص بنجاح
 
 def register_user_handlers():
 
