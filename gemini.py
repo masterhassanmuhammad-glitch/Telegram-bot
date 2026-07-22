@@ -52,7 +52,7 @@ def ask_gemini_stream(question):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content_stream(
-                model="gemini-2.5-flash",
+                model="gemini-3.5-flash-lite",
                 contents=question,
                 config={
                     'system_instruction': SYSTEM_INSTRUCTION,
