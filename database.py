@@ -149,3 +149,13 @@ def clear_user_state(user_id):
     query = 'DELETE FROM user_states WHERE user_id = %s;'
     execute_query(query, (user_id,), commit=True)
     
+def log_command(user_id, username, command, prompt=None):
+    """
+    تسجيل استخدام الأمر في قاعدة البيانات
+    """
+    query = """
+        INSERT INTO command_logs (user_id, username, command, prompt)
+        VALUES (%s, %s, %s, %s);
+    """
+    execute_query(query, (user_id, username, command, prompt), commit=True)
+    
