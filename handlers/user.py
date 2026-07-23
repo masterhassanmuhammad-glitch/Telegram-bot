@@ -371,19 +371,27 @@ def register_user_handlers():
         show_main_menu(message.chat.id, user_id)
 
     # 🤖 8. معالج الرد التلقائي عبر الذكاء الاصطناعي (يوضع دائماً في النهاية للتقاط أي نص عادي)
-    @bot.message_handler(func=lambda message: True, content_types=['text'])
+    # 🟢 التعديل في السطر الأول فقط (إضافة الشرط لمنع التقاط الأوامر)
+    @bot.message_handler(func=lambda message: message.text and not message.text.startswith('/'), content_types=['text'])
     def auto_ai_handler(message):
-        # 🚫 تجاهل المجموعات والقنوات
+        print(f"📩 [Received] User: {message.from_user.username or message.from_user.id} | Text: {message.text}")
+
+    # 🚫 1. تجاهل المجموعات والقنوات
         if message.chat.type in ['group', 'supergroup']:
             return
 
-        # 🚫 تجاهل الأوامر التي تبدأ بـ / (مثل /start)
-        if message.text.startswith('/'):
-            return
-
-        # 🚫 تجاهل الحالات الإدارية والتفاعلية (كالإذاعة، وإرسال الملاحظات...)
+    # 🚫 2. تجاهل الحالات الإدارية والتفاعلية
         if get_user_state(message.from_user.id):
             return
+
+        text = message.text.strip()
+        if not text:
+            return
+    
+    # ... باقي كود الدالة كما هو دون تغيير ...
+        
+    # ... باقي كود الدالة كما هو دون تغيير ...
+        
 
         text = message.text.strip()
         if not text:
