@@ -31,7 +31,80 @@ def get_admins_overview_data():
     return text, make_owner_manage_admins_markup()
 
 def register_owner_handlers():
-    
+
+    # 🔍 0️⃣ معالج أمر /info الاستعلامي للمالك
+    @bot.message_handler(commands=['info'])
+    def cmd_user_info(message):
+        user_id = message.from_user.id
+        
+        # حماية الأمر للمالك فقط
+        if user_id != OWNER_ID:
+            bot.reply_to(message, "❌ هذا الأمر مخصص لمالك البوت فقط!")
+            return
+
+        try:
+            args = message.text.split(maxsplit=1)
+            if len(args) < 2:
+                bot.reply_to(
+                    message, 
+                    "⚠️ <b>الاستخدام الصحيح:</b>\n<code>/info 123456789</code>", 
+                    parse_mode="HTML"
+                )
+                return
+
+            target_id_str = args[1].strip()
+            if not target_id_str.isdigit():
+                bot.reply_to(message, "❌ يرجى إدخال ID صحيح (أرقام فقط).")
+                return
+
+            target_id = int(target_id_str)
+
+            # جلب تفاصيل المستخدم من قاعدة البيانات
+            res = execute_query(
+                "SELECT user_id, username, first_name, phone_number FROM users WHERE user_id = %s;",
+                (target_id,),
+                fetch=True
+            )
+
+            if not res:
+                bot.reply_to(
+                    message, 
+                    f"❌ لم يتم العثور على أي مستخدم بالـ ID: <code>{target_id}</code> في قاعدة البيانات.", 
+                    parse_mode="HTML"
+                )
+                return
+
+            u_id, u_name, f_name, phone = res[0]
+
+            # جلب إحصائيات الأنشطة
+            logs_res = execute_query("SELECT COUNT(*) FROM command_logs WHERE user_id = %s;", (target_id,), fetch=True)
+            total_logs = logs_res[0][0] if logs_res else 0
+
+            fb_res = execute_query("SELECT COUNT(*) FROM feedback WHERE user_id = %s;", (target_id,), fetch=True)
+            total_fb = fb_res[0][0] if fb_res else 0
+
+            # تهريب الرموز الخاصة لتفادي أخطاء HTML
+            safe_first = html.escape(f_name or "غير مسجل")
+            safe_username = html.escape(u_name or "لا يوجد")
+            safe_phone = html.escape(phone or "غير مسجل")
+
+            text = (
+                f"🔍 <b>تفاصيل حساب المستخدم:</b>\n\n"
+                f"🆔 <b>ID:</b> <code>{u_id}</code>\n"
+                f"👤 <b>الاسم:</b> {safe_first}\n"
+                f"🔗 <b>المعرف:</b> @{safe_username}\n"
+                f"📱 <b>الهاتف:</b> {safe_phone}\n\n"
+                f"📊 <b>إحصائيات النشاط:</b>\n"
+                f"• السجلات والتفاعلات: <b>{total_logs}</b>\n"
+                f"• الرسائل المرسلة للإدارة: <b>{total_fb}</b>"
+            )
+
+            bot.reply_to(message, text, parse_mode="HTML")
+
+        except Exception as e:
+            print(f"❌ [/info Error]: {e}")
+            bot.reply_to(message, f"❌ حدث خطأ أثناء تنفيذ الأمر:\n<code>{e}</code>", parse_mode="HTML")
+
     # 1️⃣ استعراض المشرفين وصلاحياتهم
     @bot.callback_query_handler(func=lambda call: call.data == "owner_manage_admins")
     def cb_owner_manage_admins(call):
@@ -97,7 +170,6 @@ def register_owner_handlers():
         perm_type = parts[1]
         target_admin_id = int(parts[2])
         
-        # 🟢 فحص آمن للحالة لتجنب خطأ الـ Unpacking
         state_res = get_user_state(user_id)
         if state_res:
             state, state_data = state_res
@@ -124,7 +196,6 @@ def register_owner_handlers():
         parts = call.data.split("_")
         target_admin_id = int(parts[2])
         
-        # 🟢 فحص آمن للحالة
         state_res = get_user_state(user_id)
         if state_res:
             state, state_data = state_res
@@ -147,7 +218,6 @@ def register_owner_handlers():
                 clear_user_state(user_id)
                 bot.answer_callback_query(call.id, "✅ تم حفظ المشرف الجديد وتفعيل صلاحياته بنجاح!", show_alert=True)
                 
-                # العودة للقائمة المحدثة
                 text, markup = get_admins_overview_data()
                 bot.edit_message_text(
                     chat_id=user_id, 
@@ -181,7 +251,6 @@ def register_owner_handlers():
         execute_query("DELETE FROM admins WHERE admin_id = %s;", (target_id,), commit=True)
         bot.answer_callback_query(call.id, "✅ تم إزالة المشرف وسحب جميع صلاحياته بنجاح!", show_alert=True)
         
-        # العودة للقائمة المحدثة
         text, markup = get_admins_overview_data()
         bot.edit_message_text(
             chat_id=user_id, 
@@ -189,5 +258,5 @@ def register_owner_handlers():
             text=text, 
             parse_mode="HTML", 
             reply_markup=markup
-        )
+                                                                       )
         
