@@ -6,7 +6,7 @@ from admin_logs import register_logs_handlers
 def init_handlers():
     # تسجيل معالجات الإدارة والمستخدمين والمالك والسجلات
     register_admin_handlers() 
-   register_owner_handlers()
+    register_owner_handlers()
     register_user_handlers()
     register_logs_handlers()
     
