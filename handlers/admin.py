@@ -306,25 +306,38 @@ def register_admin_handlers():
         )
 
     # تعديل الأزرار وحذفها ونقلها وإدارة ملفاتها
-    @bot.callback_query_handler(func=lambda call: call.data == "adm_edit_btn")
-    def cb_edit_list(call):
-        print(f"DEBUG: cb_edit_list triggered with data: {call.data}")
-        user_id = call.from_user.id
-        perms = get_permissions(user_id)
-        if not is_admin_or_alert(call, perms, 'can_settings'): return
-        buttons = execute_query("SELECT id, name FROM buttons ORDER BY id ASC;", fetch=True)
-        if not buttons:
-            bot.answer_callback_query(call.id, "⚠️ لا توجد أزرار مضافة لتعديلها حالياً!", show_alert=True)
-            return
-        markup = telebot.types.InlineKeyboardMarkup(row_width=1)
-        for b_id, b_name in buttons:
-            markup.add(telebot.types.InlineKeyboardButton(text=f"✏️ تعديل: {b_name}", callback_data=f"choose_edit_{b_id}"))
-        markup.add(telebot.types.InlineKeyboardButton(text="🔙 العودة للإعدادات", callback_data="admin_settings"))
-        bot.edit_message_text(
-            chat_id=user_id, message_id=call.message.message_id,
-            text="✏️ اختر الزر الذي ترغب بتعديله:", reply_markup=markup
-        )
-        bot.answer_callback_query(call.id)
+@bot.callback_query_handler(func=lambda call: call.data == "adm_edit_btn")
+def cb_edit_list(call):
+    print(f"DEBUG: cb_edit_list triggered with data: {call.data}")
+    user_id = call.from_user.id
+    perms = get_permissions(user_id)
+    if not is_admin_or_alert(call, perms, 'can_settings'): return
+    buttons = execute_query("SELECT id, name FROM buttons ORDER BY id ASC;", fetch=True)
+    if not buttons:
+        bot.answer_callback_query(call.id, "⚠️ لا توجد أزرار مضافة لتعديلها حالياً!", show_alert=True)
+        return
+
+    # 1. تغيير عرض السطر ليكون 3 أزرار
+    markup = telebot.types.InlineKeyboardMarkup(row_width=3)
+    
+    # 2. إنشاء قائمة بالأزرار وتجريد النص ليصبح الاسم فقط (بدون كلمة تعديل)
+    btn_list = [
+        telebot.types.InlineKeyboardButton(text=b_name, callback_data=f"choose_edit_{b_id}")
+        for b_id, b_name in buttons
+    ]
+    
+    # 3. إضافة كافة أزرار التعديل دفعة واحدة لتوزيعها تلقائياً (3 في السطر)
+    markup.add(*btn_list)
+    
+    # 4. إضافة زر العودة في سطر منفصل بحاله
+    markup.add(telebot.types.InlineKeyboardButton(text="🔙 العودة للإعدادات", callback_data="admin_settings"))
+
+    bot.edit_message_text(
+        chat_id=user_id, message_id=call.message.message_id,
+        text="✏️ اختر الزر الذي ترغب بتعديله:", reply_markup=markup
+    )
+    bot.answer_callback_query(call.id)
+    
 
     @bot.callback_query_handler(func=lambda call: call.data == "adm_del_btn")
     def cb_delete_list(call):
