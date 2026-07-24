@@ -338,39 +338,80 @@ def cb_edit_list(call):
     )
     bot.answer_callback_query(call.id)
     
-
+    # 1. عرض قائمة الأزرار للحذف (3 في كل سطر، وبدون كلمة حذف)
     @bot.callback_query_handler(func=lambda call: call.data == "adm_del_btn")
     def cb_delete_list(call):
         print(f"DEBUG: cb_delete_list triggered with data: {call.data}")
         user_id = call.from_user.id
         perms = get_permissions(user_id)
         if not is_admin_or_alert(call, perms, 'can_settings'): return
+        
         buttons = execute_query("SELECT id, name FROM buttons ORDER BY id ASC;", fetch=True)
         if not buttons:
             bot.answer_callback_query(call.id, "⚠️ لا توجد أزرار مضافة لحذفها حالياً!", show_alert=True)
             return
-        markup = telebot.types.InlineKeyboardMarkup(row_width=1)
-        for b_id, b_name in buttons:
-            markup.add(telebot.types.InlineKeyboardButton(text=f"🗑️ حذف: {b_name}", callback_data=f"exec_del_btn_{b_id}"))
+
+        # ترتيب 3 أزرار في السطر
+        markup = telebot.types.InlineKeyboardMarkup(row_width=3)
+        btn_list = [
+            telebot.types.InlineKeyboardButton(text=b_name, callback_data=f"ask_del_btn_{b_id}")
+            for b_id, b_name in buttons
+        ]
+        markup.add(*btn_list)
         markup.add(telebot.types.InlineKeyboardButton(text="🔙 العودة للإعدادات", callback_data="admin_settings"))
+        
         bot.edit_message_text(
             chat_id=user_id, message_id=call.message.message_id,
-            text="❌ اختر الزر الذي ترغب في حذفه تماماً (سيتم حذف تفريعاته وملفاته تلقائياً):",
+            text="❌ اختر الزر الذي ترغب في حذفه تماماً:",
             reply_markup=markup
         )
         bot.answer_callback_query(call.id)
 
+
+    # 2. طلب تأكيد حذف الزر قبل التنفيذ
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("ask_del_btn_"))
+    def cb_ask_delete_btn(call):
+        user_id = call.from_user.id
+        perms = get_permissions(user_id)
+        if not is_admin_or_alert(call, perms, 'can_settings'): return
+
+        btn_id = int(call.data.split("_")[3])
+        btn_info = execute_query("SELECT name FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
+        if not btn_info:
+            bot.answer_callback_query(call.id, "⚠️ هذا الزر غير موجود!")
+            return
+        btn_name = btn_info[0][0]
+
+        # أزرار التأكيد والإلغاء
+        markup = telebot.types.InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            telebot.types.InlineKeyboardButton(text="✅ نعم، احذف", callback_data=f"exec_del_btn_{btn_id}"),
+            telebot.types.InlineKeyboardButton(text="❌ إلغاء", callback_data="adm_del_btn")
+        )
+
+        bot.edit_message_text(
+            chat_id=user_id, message_id=call.message.message_id,
+            text=f"⚠️ هل أنت متأكد من حذف الزر: **[{btn_name}]**؟\n\n*(سيتم حذف تفريعاته وملفاته تلقائياً ولا يمكن التراجع)*",
+            parse_mode="Markdown",
+            reply_markup=markup
+        )
+        bot.answer_callback_query(call.id)
+
+
+    # 3. التنفيذ الفعلي لحذف الزر بعد التأكيد
     @bot.callback_query_handler(func=lambda call: call.data.startswith("exec_del_btn_"))
     def cb_execute_del_btn(call):
         user_id = call.from_user.id
         perms = get_permissions(user_id)
         if not is_admin_or_alert(call, perms, 'can_settings'): return
+
         btn_id = int(call.data.split("_")[3])
         btn_info = execute_query("SELECT name FROM buttons WHERE id = %s;", (btn_id,), fetch=True)
         if not btn_info:
             bot.answer_callback_query(call.id, "⚠️ هذا الزر غير موجود بالفعل!")
             return
         btn_name = btn_info[0][0]
+        
         execute_query("DELETE FROM buttons WHERE id = %s;", (btn_id,), commit=True)
         bot.answer_callback_query(call.id, f"✅ تم حذف الزر [ {btn_name} ] بنجاح!", show_alert=True)
         
@@ -382,19 +423,26 @@ def cb_edit_list(call):
                 reply_markup=make_admin_settings_markup()
             )
             return
-        markup = telebot.types.InlineKeyboardMarkup(row_width=1)
-        for b_id, b_name in buttons:
-            markup.add(telebot.types.InlineKeyboardButton(text=f"🗑️ حذف: {b_name}", callback_data=f"exec_del_btn_{b_id}"))
+
+        # إعادة عرض الأزرار المتبقية (3 في كل سطر وبدون كلمة حذف)
+        markup = telebot.types.InlineKeyboardMarkup(row_width=3)
+        btn_list = [
+            telebot.types.InlineKeyboardButton(text=b_name, callback_data=f"ask_del_btn_{b_id}")
+            for b_id, b_name in buttons
+        ]
+        markup.add(*btn_list)
         markup.add(telebot.types.InlineKeyboardButton(text="🔙 العودة للإعدادات", callback_data="admin_settings"))
+
         bot.edit_message_text(
             chat_id=user_id, message_id=call.message.message_id,
-            text="❌ اختر الزر الذي ترغب في حذفه تماماً (سيتم حذف تفريعاته وملفاته تلقائياً):",
+            text="❌ اختر الزر الذي ترغب في حذفه تماماً:",
             reply_markup=markup
         )
 
-    # حذف ملف فردي
+
+    # 4. طلب تأكيد حذف ملف فردي
     @bot.callback_query_handler(func=lambda call: call.data.startswith("delfile_"))
-    def cb_delete_single_file(call):
+    def cb_ask_delete_single_file(call):
         user_id = call.from_user.id
         perms = get_permissions(user_id)
         if not is_admin_or_alert(call, perms, 'can_settings'): return
@@ -402,6 +450,32 @@ def cb_edit_list(call):
         parts = call.data.split("_")
         f_record_id = int(parts[1])
         btn_id = int(parts[2])
+
+        markup = telebot.types.InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            telebot.types.InlineKeyboardButton(text="✅ نعم، احذف", callback_data=f"confirm_delfile_{f_record_id}_{btn_id}"),
+            telebot.types.InlineKeyboardButton(text="❌ إلغاء", callback_data=f"cancel_delfile_{btn_id}")
+        )
+        
+        bot.edit_message_text(
+            chat_id=user_id, message_id=call.message.message_id,
+            text="⚠️ **هل أنت متأكد من حذف هذا الملف؟**",
+            parse_mode="Markdown",
+            reply_markup=markup
+        )
+        bot.answer_callback_query(call.id)
+
+
+    # 5. التنفيذ الفعلي لحذف ملف فردي
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_delfile_"))
+    def cb_confirm_delete_single_file(call):
+        user_id = call.from_user.id
+        perms = get_permissions(user_id)
+        if not is_admin_or_alert(call, perms, 'can_settings'): return
+        
+        parts = call.data.split("_")
+        f_record_id = int(parts[2])
+        btn_id = int(parts[3])
         
         execute_query("DELETE FROM button_files WHERE id = %s;", (f_record_id,), commit=True)
         bot.answer_callback_query(call.id, "🗑️ تم حذف الملف بنجاح!", show_alert=True)
@@ -412,15 +486,41 @@ def cb_edit_list(call):
             reply_markup=make_admin_file_manager_markup(btn_id)
         )
 
-    # حذف جميع الملفات دفعة واحدة
+
+    # 6. طلب تأكيد حذف جميع الملفات
     @bot.callback_query_handler(func=lambda call: call.data.startswith("delallfiles_"))
-    def cb_delete_all_files(call):
+    def cb_ask_delete_all_files(call):
         user_id = call.from_user.id
         perms = get_permissions(user_id)
         if not is_admin_or_alert(call, perms, 'can_settings'): return
         
         parts = call.data.split("_")
         btn_id = int(parts[1])
+
+        markup = telebot.types.InlineKeyboardMarkup(row_width=2)
+        markup.add(
+            telebot.types.InlineKeyboardButton(text="✅ نعم، احذف الكل", callback_data=f"confirm_delallfiles_{btn_id}"),
+            telebot.types.InlineKeyboardButton(text="❌ إلغاء", callback_data=f"cancel_delfile_{btn_id}")
+        )
+        
+        bot.edit_message_text(
+            chat_id=user_id, message_id=call.message.message_id,
+            text="⚠️ **هل أنت متأكد من حذف جميع الملفات المربوطة بهذا الزر؟**",
+            parse_mode="Markdown",
+            reply_markup=markup
+        )
+        bot.answer_callback_query(call.id)
+
+
+    # 7. التنفيذ الفعلي لحذف جميع الملفات
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_delallfiles_"))
+    def cb_confirm_delete_all_files(call):
+        user_id = call.from_user.id
+        perms = get_permissions(user_id)
+        if not is_admin_or_alert(call, perms, 'can_settings'): return
+        
+        parts = call.data.split("_")
+        btn_id = int(parts[2])
         
         execute_query("DELETE FROM button_files WHERE button_id = %s;", (btn_id,), commit=True)
         bot.answer_callback_query(call.id, "🗑️ تم حذف جميع الملفات بنجاح!", show_alert=True)
@@ -430,7 +530,21 @@ def cb_edit_list(call):
             text="📁 قائمة الملفات المربوطة بهذا الزر حالياً. يمكنك تعديلها:",
             reply_markup=make_admin_file_manager_markup(btn_id)
         )
+
+
+    # 8. معالج إلغاء حذف الملفات (العودة لمدير الملفات)
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_delfile_"))
+    def cb_cancel_delfile(call):
+        user_id = call.from_user.id
+        btn_id = int(call.data.split("_")[2])
+        bot.edit_message_text(
+            chat_id=user_id, message_id=call.message.message_id,
+            text="📁 قائمة الملفات المربوطة بهذا الزر حالياً. يمكنك تعديلها:",
+            reply_markup=make_admin_file_manager_markup(btn_id)
+        )
+        bot.answer_callback_query(call.id, "تم إلغاء عملية الحذف.")
         
+
     @bot.callback_query_handler(func=lambda call: call.data.startswith("choose_edit_"))
     def cb_choose_edit(call):
         user_id = call.from_user.id
