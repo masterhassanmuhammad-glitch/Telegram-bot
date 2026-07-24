@@ -106,6 +106,7 @@ def register_owner_handlers():
             bot.reply_to(message, f"❌ حدث خطأ أثناء تنفيذ الأمر:\n<code>{e}</code>", parse_mode="HTML")
 
     # 1️⃣ استعراض المشرفين وصلاحياتهم
+    # 1️⃣ استعراض المشرفين وصلاحياتهم
     @bot.callback_query_handler(func=lambda call: call.data == "owner_manage_admins")
     def cb_owner_manage_admins(call):
         if not is_owner_or_alert(call): return
@@ -133,7 +134,8 @@ def register_owner_handlers():
         bot.edit_message_text(
             chat_id=user_id, 
             message_id=call.message.message_id,
-            text="✍️ حسناً، أرسل الآن الـ ID الرقمي للمشرف الجديد الذي ترغب في إضافته:"
+            text="✍️ أرسل الآن الـ ID الرقمي للمشرف الجديد الذي ترغب في إضافته:\n\n<i>(لإلغاء العملية أرسل /cancel)</i>",
+            parse_mode="HTML"
         )
         bot.answer_callback_query(call.id)
 
@@ -144,11 +146,19 @@ def register_owner_handlers():
         if user_id != OWNER_ID:
             clear_user_state(user_id)
             return
+        
+        text = message.text.strip()
+        
+        # دعم إلغاء العملية
+        if text in ["/cancel", "إلغاء"]:
+            clear_user_state(user_id)
+            bot.send_message(user_id, "🚫 تم إلغاء عملية إضافة المشرف.")
+            return
             
         try:
-            new_admin_id = int(message.text.strip())
+            new_admin_id = int(text)
         except ValueError:
-            bot.send_message(user_id, "❌ الـ ID يجب أن يتكون من أرقام فقط. أعد المحاولة:")
+            bot.send_message(user_id, "❌ الـ ID يجب أن يتكون من أرقام فقط. أعد المحاولة أو أرسل /cancel لإلغاء العملية:")
             return
             
         perms_dict = {'settings': False, 'broadcast': False, 'feedback': False, 'count': False}
@@ -176,7 +186,8 @@ def register_owner_handlers():
             if state == "CHOOSING_ADMIN_PERMISSIONS" and state_data.get('new_admin_id') == target_admin_id:
                 perms_dict = state_data.get('perms', {})
                 if perm_type == "all":
-                    perms_dict = {k: True for k in perms_dict}
+                    all_enabled = all(perms_dict.values())
+                    perms_dict = {k: not all_enabled for k in perms_dict}
                 else:
                     perms_dict[perm_type] = not perms_dict.get(perm_type, False)
                     
@@ -186,7 +197,10 @@ def register_owner_handlers():
                     message_id=call.message.message_id,
                     reply_markup=make_permissions_markup(perms_dict, target_admin_id)
                 )
-        bot.answer_callback_query(call.id)
+                bot.answer_callback_query(call.id)
+                return
+
+        bot.answer_callback_query(call.id, "⚠️ انتهت الجلسة، يرجى البدء من جديد من قائمة المشرفين.", show_alert=True)
 
     # 5️⃣ حفظ المشرف الجديد في قاعدة البيانات
     @bot.callback_query_handler(func=lambda call: call.data.startswith("save_admin_"))
@@ -216,7 +230,7 @@ def register_owner_handlers():
                 ''', (target_admin_id, perms_dict['settings'], perms_dict['broadcast'], perms_dict['feedback'], perms_dict['count']), commit=True)
                 
                 clear_user_state(user_id)
-                bot.answer_callback_query(call.id, "✅ تم حفظ المشرف الجديد وتفعيل صلاحياته بنجاح!", show_alert=True)
+                bot.answer_callback_query(call.id, "✅ تم حفظ المشرف وتفعيل صلاحياته بنجاح!", show_alert=True)
                 
                 text, markup = get_admins_overview_data()
                 bot.edit_message_text(
@@ -226,6 +240,9 @@ def register_owner_handlers():
                     parse_mode="HTML", 
                     reply_markup=markup
                 )
+                return
+
+        bot.answer_callback_query(call.id, "⚠️ انتهت الجلسة، يرجى البدء من جديد.", show_alert=True)
 
     # 6️⃣ عرض قائمة الحذف
     @bot.callback_query_handler(func=lambda call: call.data == "owner_remove_admin_list")
@@ -258,5 +275,5 @@ def register_owner_handlers():
             text=text, 
             parse_mode="HTML", 
             reply_markup=markup
-                                                                       )
-        
+            )
+                    
