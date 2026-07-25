@@ -77,16 +77,22 @@ def get_permissions(user_id):
 
 def check_state(state_name):
     """
-    يستخدم مع message_handler للتحقق من حالة المستخدم.
+    يستخدم مع message_handler للتحقق من حالة المستخدم بشكل آمن.
+    يتعامل مع الحالة سواء كانت نصاً (str) أو Tuple تحتوي على البيانات.
     """
 
     def wrapper(message):
-        state = get_user_state(message.from_user.id)
+        state_res = get_user_state(message.from_user.id)
 
-        if not state:
+        if not state_res:
             return False
 
-        return state[0] == state_name
+        # إذا كانت النتيجة Tuple أو List مثل (state, data)
+        if isinstance(state_res, (tuple, list)):
+            return state_res[0] == state_name
+
+        # إذا كانت النتيجة نصاً مباشراً (String)
+        return state_res == state_name
 
     return wrapper
 
@@ -205,13 +211,8 @@ def send_files_and_recreate_menu(
 # بيانات مجموعة الدفعة
 # ==========================================================
 
-# تم تحديث المعرف الجديد للمجموعة الخاصة بالدفعة هنا
 BATCH_GROUP_ID = -1003472213441
 
-
-# ==========================================================
-# التحقق من عضوية المستخدم
-# ==========================================================
 
 # ==========================================================
 # التحقق من عضوية المستخدم أو الاستثناء
@@ -252,7 +253,6 @@ def is_user_in_batch(bot, user_id):
             f"[HELPERS] Membership check failed: {e}"
         )
         return False
-        
 
 
 # ==========================================================
@@ -293,5 +293,5 @@ def send_join_request_menu(bot, chat_id):
         text,
         parse_mode="Markdown",
         reply_markup=keyboard,
-    )
+        )
     
