@@ -588,7 +588,8 @@ def cb_edit_list(call):
         )
         bot.answer_callback_query(call.id)
 
-    @bot.callback_query_handler(func=lambda call: call.data.startswith("editopt_name_"))
+    # 1️⃣ معالج بدء طلب تعديل الاسم (يلتقط adm_edit_btn)
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("adm_edit_btn"))
     def cb_edit_name_init(call):
         try:
             user_id = call.from_user.id
@@ -596,11 +597,15 @@ def cb_edit_list(call):
             if not is_admin_or_alert(call, perms, 'can_settings'): 
                 return
 
-            # 🔍 استخراج ID الزر بأمان عبر جلب آخر عنصر دائماً
+            # 🔍 استخراج ID الزر بأمان من نهاية الـ callback_data
             parts = call.data.split("_")
-            btn_id = int(parts[-1])
+            btn_id = int(parts[-1]) if parts[-1].isdigit() else None
 
-            # 📝 حفظ الحالة مع بيانات الزر
+            if not btn_id:
+                bot.answer_callback_query(call.id, "❌ متعذر تحديد رقم الزر!", show_alert=True)
+                return
+
+            # 📝 حفظ الحالة في قاعدة البيانات بنجاح
             set_user_state(user_id, "WAITING_EDIT_NAME", {"button_id": btn_id})
 
             bot.edit_message_text(
@@ -616,7 +621,7 @@ def cb_edit_list(call):
             bot.answer_callback_query(call.id, "❌ حدث خطأ أثناء فتح واجهة التعديل.", show_alert=True)
 
 
-    # 2️⃣ معالج استقبال الاسم الجديد وتحديث قاعدة البيانات
+    # 2️⃣ معالج استقبال الاسم الجديد (استخدام html.escape الآمن)
     @bot.message_handler(func=check_state("WAITING_EDIT_NAME"), content_types=['text'])
     def process_edit_name(message):
         print("🔥 EDIT NAME HANDLER ACTIVATED")
@@ -630,12 +635,11 @@ def cb_edit_list(call):
                 bot.reply_to(message, "❌ ليس لديك صلاحية تعديل الإعدادات.")
                 return
 
-            # 🗄️ جلب وتفكيك حالة المستخدم بأمان تام
+            # 🗄️ جلب حالة المستخدم
             state_res = get_user_state(user_id)
             if not state_res:
                 return
 
-            # التعامل مع شكل النتيجة سواء كانت Tuple أو String
             if isinstance(state_res, (tuple, list)):
                 state = state_res[0]
                 data = state_res[1] if len(state_res) > 1 else {}
@@ -645,23 +649,22 @@ def cb_edit_list(call):
             btn_id = data.get('button_id') if isinstance(data, dict) else None
             new_name = message.text.strip()
 
-            # ⚠️ التأكد من وجود ID الزر
             if not btn_id:
                 clear_user_state(user_id)
-                bot.reply_to(message, "❌ حدث خطأ: تعذر تحديد الزر المطلوب. أعد المحاولة من جديد.")
+                bot.reply_to(message, "❌ حدث خطأ: تعذر تحديد الزر المطلوب.")
                 return
 
-            # 🔄 تحديث قاعدة البيانات
+            # 🔄 تحديث الاسم في قاعدة البيانات
             execute_query(
                 "UPDATE buttons SET name = %s WHERE id = %s;",
                 (new_name, btn_id),
                 commit=True
             )
 
-            # 🧹 تفريغ الحالة فوراً بعد النجاح
+            # 🧹 تفريغ الحالة
             clear_user_state(user_id)
 
-            # ✉️ إرسال النتيجة للمستخدم
+            # ✉️ إرسال تأكيد النجاح مع التهريب عبر html.escape
             bot.send_message(
                 user_id,
                 f"✅ تم تعديل اسم الزر بنجاح إلى:\n<b>{html.escape(new_name)}</b>",
@@ -673,7 +676,7 @@ def cb_edit_list(call):
             print(f"❌ [process_edit_name Error]: {e}")
             clear_user_state(user_id)
             bot.reply_to(message, f"❌ حدث خطأ أثناء تعديل الاسم:\n<code>{e}</code>", parse_mode="HTML")
-    
+        
     @bot.callback_query_handler(func=lambda call: call.data.startswith("editopt_msg_"))
     def cb_edit_msg_init(call):
         user_id = call.from_user.id
