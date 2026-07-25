@@ -589,63 +589,90 @@ def cb_edit_list(call):
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("editopt_name_"))
     def cb_edit_name_init(call):
-        user_id = call.from_user.id
-        perms = get_permissions(user_id)
-        if not is_admin_or_alert(call, perms, 'can_settings'): return
-        btn_id = int(call.data.split("_")[2])
-        set_user_state(user_id, "WAITING_EDIT_NAME", {"button_id": btn_id})
-        bot.edit_message_text(
-            chat_id=user_id, message_id=call.message.message_id,
-            text="✍️ أرسل الاسم الجديد للزر الآن:",
-            reply_markup=get_cancel_markup()
-        )
-        bot.answer_callback_query(call.id)
+        try:
+            user_id = call.from_user.id
+            perms = get_permissions(user_id)
+            if not is_admin_or_alert(call, perms, 'can_settings'): 
+                return
 
+            # 🔍 استخراج ID الزر بأمان عبر جلب آخر عنصر دائماً
+            parts = call.data.split("_")
+            btn_id = int(parts[-1])
+
+            # 📝 حفظ الحالة مع بيانات الزر
+            set_user_state(user_id, "WAITING_EDIT_NAME", {"button_id": btn_id})
+
+            bot.edit_message_text(
+                chat_id=user_id, 
+                message_id=call.message.message_id,
+                text="✍️ أرسل الاسم الجديد للزر الآن:",
+                reply_markup=get_cancel_markup()
+            )
+            bot.answer_callback_query(call.id)
+
+        except Exception as e:
+            print(f"❌ [cb_edit_name_init Error]: {e}")
+            bot.answer_callback_query(call.id, "❌ حدث خطأ أثناء فتح واجهة التعديل.", show_alert=True)
+
+
+    # 2️⃣ معالج استقبال الاسم الجديد وتحديث قاعدة البيانات
     @bot.message_handler(func=check_state("WAITING_EDIT_NAME"), content_types=['text'])
     def process_edit_name(message):
         print("🔥 EDIT NAME HANDLER ACTIVATED")
-        
         user_id = message.from_user.id
 
-        print("DEBUG: process_edit_name started")
+        try:
+            # 🔒 فحص الصلاحية
+            perms = get_permissions(user_id)
+            if not perms.get('can_settings'):
+                clear_user_state(user_id)
+                bot.reply_to(message, "❌ ليس لديك صلاحية تعديل الإعدادات.")
+                return
 
-        perms = get_permissions(user_id)
-        if not perms['can_settings']:
+            # 🗄️ جلب وتفكيك حالة المستخدم بأمان تام
+            state_res = get_user_state(user_id)
+            if not state_res:
+                return
+
+            # التعامل مع شكل النتيجة سواء كانت Tuple أو String
+            if isinstance(state_res, (tuple, list)):
+                state = state_res[0]
+                data = state_res[1] if len(state_res) > 1 else {}
+            else:
+                state, data = state_res, {}
+
+            btn_id = data.get('button_id') if isinstance(data, dict) else None
+            new_name = message.text.strip()
+
+            # ⚠️ التأكد من وجود ID الزر
+            if not btn_id:
+                clear_user_state(user_id)
+                bot.reply_to(message, "❌ حدث خطأ: تعذر تحديد الزر المطلوب. أعد المحاولة من جديد.")
+                return
+
+            # 🔄 تحديث قاعدة البيانات
+            execute_query(
+                "UPDATE buttons SET name = %s WHERE id = %s;",
+                (new_name, btn_id),
+                commit=True
+            )
+
+            # 🧹 تفريغ الحالة فوراً بعد النجاح
             clear_user_state(user_id)
-            print("DEBUG: No permission")
-            return
 
-        state, data = get_user_state(user_id)
+            # ✉️ إرسال النتيجة للمستخدم
+            bot.send_message(
+                user_id,
+                f"✅ تم تعديل اسم الزر بنجاح إلى:\n<b>{html.escape(new_name)}</b>",
+                parse_mode="HTML",
+                reply_markup=get_edit_markup(btn_id)
+            )
 
-        print("DEBUG: State:", state)
-        print("DEBUG: Data:", data)
-
-        btn_id = data.get('button_id')
-        new_name = message.text.strip()
-
-        print("DEBUG: Button ID:", btn_id)
-        print("DEBUG: New name:", new_name)
-
-        execute_query(
-            "UPDATE buttons SET name = %s WHERE id = %s;",
-            (new_name, btn_id),
-            commit=True
-        )
-
-        print("DEBUG: Database updated")
-
-        clear_user_state(user_id)
-
-        print("DEBUG: State cleared")
-
-        bot.send_message(
-            user_id,
-            "✅ تم تعديل اسم الزر بنجاح!",
-            reply_markup=get_edit_markup(btn_id)
-        )
-
-        print("DEBUG: Message sent")
-
+        except Exception as e:
+            print(f"❌ [process_edit_name Error]: {e}")
+            clear_user_state(user_id)
+            bot.reply_to(message, f"❌ حدث خطأ أثناء تعديل الاسم:\n<code>{e}</code>", parse_mode="HTML")
+    
     @bot.callback_query_handler(func=lambda call: call.data.startswith("editopt_msg_"))
     def cb_edit_msg_init(call):
         user_id = call.from_user.id
