@@ -603,6 +603,8 @@ def cb_edit_list(call):
 
     @bot.message_handler(func=check_state("WAITING_EDIT_NAME"), content_types=['text'])
     def process_edit_name(message):
+        print("🔥 EDIT NAME HANDLER ACTIVATED")
+        
         user_id = message.from_user.id
 
         print("DEBUG: process_edit_name started")
