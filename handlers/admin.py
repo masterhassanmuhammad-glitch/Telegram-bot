@@ -1,6 +1,7 @@
 print("DEBUG: الملف admin.py تم تحميله بنجاح مع دعم التنسيق الشبكي الكامل وزر الإلغاء الشامل")
 
 import telebot
+import html 
 from config import bot, ADMIN_IDS, OWNER_ID
 from database import execute_query, execute_query_dict, set_user_state, get_user_state, clear_user_state
 from keyboards import (
