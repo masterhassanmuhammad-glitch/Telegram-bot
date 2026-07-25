@@ -228,24 +228,40 @@ def register_admin_handlers():
             reply_markup=make_admin_choose_parent_markup()
         )
 
-    @bot.callback_query_handler(func=lambda call: call.data.startswith("setparent_new_"))
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("setparent_"))
     def cb_set_parent_new(call):
         user_id = call.from_user.id
         perms = get_permissions(user_id)
-        if not is_admin_or_alert(call, perms, 'can_settings'): return
-        parts = call.data.split("_")
-        btn_name = parts[2]
-        parent_raw = parts[3]
+        if not is_admin_or_alert(call, perms, 'can_settings'):
+            return
+
+        state = get_user_state(user_id)
+        if not state or state["state"] != "WAITING_PARENT":
+            bot.answer_callback_query(call.id, "❌ انتهت العملية أو تم إلغاؤها.", show_alert=True)
+            return
+
+        btn_name = state["data"]["button_name"]
+
+        parent_raw = call.data.split("_")[1]
         parent_id = None if parent_raw == "null" else int(parent_raw)
-        
-        set_user_state(user_id, "WAITING_BTN_ROW", {"btn_name": btn_name, "parent_id": parent_id})
+
+        set_user_state(user_id, "WAITING_BTN_ROW", {
+            "btn_name": btn_name,
+            "parent_id": parent_id
+        })
+
         bot.edit_message_text(
-            chat_id=user_id, message_id=call.message.message_id,
-            text=f"📐 ممتاز! الآن أرسل **رقم السطر** الذي تريد ظهور زر [ {btn_name} ] فيه:\n(مثال: أدخل 1 ليكون بالسطر الأول فوق، أو 3 ليكون بالسطر الثالث...)",
+            chat_id=user_id,
+            message_id=call.message.message_id,
+            text=(
+                f"📐 ممتاز! الآن أرسل **رقم السطر** الذي تريد ظهور زر [ {btn_name} ] فيه:\n"
+                "(مثال: أدخل 1 ليكون بالسطر الأول فوق، أو 3 ليكون بالسطر الثالث...)"
+            ),
             reply_markup=get_cancel_markup()
         )
-        bot.answer_callback_query(call.id)
 
+        bot.answer_callback_query(call.id)
+        
     @bot.message_handler(func=check_state("WAITING_BTN_ROW"), content_types=['text'])
     def process_btn_row(message):
         user_id = message.from_user.id
