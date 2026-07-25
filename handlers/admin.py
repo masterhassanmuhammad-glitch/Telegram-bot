@@ -53,10 +53,7 @@ def register_admin_handlers():
         )
         bot.answer_callback_query(call.id)
 
-
-    # ==========================================
     # معالج إلغاء العمليات الشامل
-    # ==========================================
     @bot.callback_query_handler(func=lambda call: call.data == "cancel_broadcast")
     def cb_cancel_process(call):
         user_id = call.from_user.id
@@ -68,9 +65,7 @@ def register_admin_handlers():
             reply_markup=make_admin_settings_markup()
         )
 
-    # ==========================================
     # البث الجماعي للطلاب (مع ميزة الإلغاء)
-    # ==========================================
     @bot.callback_query_handler(func=lambda call: call.data == "admin_broadcast")
     def cb_admin_broadcast_init(call):
         user_id = call.from_user.id
@@ -191,9 +186,7 @@ def register_admin_handlers():
             bot.send_message(user_id, f"❌ فشل إرسال الرد للمستخدم. الخطأ: {str(e)}")
         clear_user_state(user_id)
 
-    # ==========================================
     # شجرة وهيكلة الأزرار (إضافة زر بتنسيق شبكي مع الإلغاء)
-    # ==========================================
     @bot.callback_query_handler(func=lambda call: call.data == "adm_add_btn")
     def cb_add_button_init(call):
         user_id = call.from_user.id
@@ -217,11 +210,7 @@ def register_admin_handlers():
             return
 
         btn_name = message.text.strip()
-
-        # حفظ اسم الزر مؤقتًا في حالة المستخدم
-        set_user_state(user_id, "WAITING_PARENT", {
-            "button_name": btn_name
-        })
+        set_user_state(user_id, "WAITING_PARENT", {"button_name": btn_name})
 
         bot.send_message(
             user_id,
@@ -233,8 +222,7 @@ def register_admin_handlers():
     def cb_set_parent_new(call):
         user_id = call.from_user.id
         perms = get_permissions(user_id)
-        if not is_admin_or_alert(call, perms, 'can_settings'):
-            return
+        if not is_admin_or_alert(call, perms, 'can_settings'): return
 
         state = get_user_state(user_id)
         if not state or state["state"] != "WAITING_PARENT":
@@ -242,7 +230,6 @@ def register_admin_handlers():
             return
 
         btn_name = state["data"]["button_name"]
-
         parent_raw = call.data.split("_")[1]
         parent_id = None if parent_raw == "null" else int(parent_raw)
 
@@ -260,7 +247,6 @@ def register_admin_handlers():
             ),
             reply_markup=get_cancel_markup()
         )
-
         bot.answer_callback_query(call.id)
         
     @bot.message_handler(func=check_state("WAITING_BTN_ROW"), content_types=['text'])
@@ -330,40 +316,33 @@ def register_admin_handlers():
             reply_markup=get_edit_markup(btn_id)
         )
 
-    # تعديل الأزرار وحذفها ونقلها وإدارة ملفاتها
-@bot.callback_query_handler(func=lambda call: call.data == "adm_edit_btn")
-def cb_edit_list(call):
-    print(f"DEBUG: cb_edit_list triggered with data: {call.data}")
-    user_id = call.from_user.id
-    perms = get_permissions(user_id)
-    if not is_admin_or_alert(call, perms, 'can_settings'): return
-    buttons = execute_query("SELECT id, name FROM buttons ORDER BY id ASC;", fetch=True)
-    if not buttons:
-        bot.answer_callback_query(call.id, "⚠️ لا توجد أزرار مضافة لتعديلها حالياً!", show_alert=True)
-        return
+    # عرض قائمة الأزرار للتعديل
+    @bot.callback_query_handler(func=lambda call: call.data == "adm_edit_btn")
+    def cb_edit_list(call):
+        print(f"DEBUG: cb_edit_list triggered with data: {call.data}")
+        user_id = call.from_user.id
+        perms = get_permissions(user_id)
+        if not is_admin_or_alert(call, perms, 'can_settings'): return
+        buttons = execute_query("SELECT id, name FROM buttons ORDER BY id ASC;", fetch=True)
+        if not buttons:
+            bot.answer_callback_query(call.id, "⚠️ لا توجد أزرار مضافة لتعديلها حالياً!", show_alert=True)
+            return
 
-    # 1. تغيير عرض السطر ليكون 3 أزرار
-    markup = telebot.types.InlineKeyboardMarkup(row_width=3)
-    
-    # 2. إنشاء قائمة بالأزرار وتجريد النص ليصبح الاسم فقط (بدون كلمة تعديل)
-    btn_list = [
-        telebot.types.InlineKeyboardButton(text=b_name, callback_data=f"choose_edit_{b_id}")
-        for b_id, b_name in buttons
-    ]
-    
-    # 3. إضافة كافة أزرار التعديل دفعة واحدة لتوزيعها تلقائياً (3 في السطر)
-    markup.add(*btn_list)
-    
-    # 4. إضافة زر العودة في سطر منفصل بحاله
-    markup.add(telebot.types.InlineKeyboardButton(text="🔙 العودة للإعدادات", callback_data="admin_settings"))
+        markup = telebot.types.InlineKeyboardMarkup(row_width=3)
+        btn_list = [
+            telebot.types.InlineKeyboardButton(text=b_name, callback_data=f"choose_edit_{b_id}")
+            for b_id, b_name in buttons
+        ]
+        markup.add(*btn_list)
+        markup.add(telebot.types.InlineKeyboardButton(text="🔙 العودة للإعدادات", callback_data="admin_settings"))
 
-    bot.edit_message_text(
-        chat_id=user_id, message_id=call.message.message_id,
-        text="✏️ اختر الزر الذي ترغب بتعديله:", reply_markup=markup
-    )
-    bot.answer_callback_query(call.id)
-    
-    # 1. عرض قائمة الأزرار للحذف (3 في كل سطر، وبدون كلمة حذف)
+        bot.edit_message_text(
+            chat_id=user_id, message_id=call.message.message_id,
+            text="✏️ اختر الزر الذي ترغب بتعديله:", reply_markup=markup
+        )
+        bot.answer_callback_query(call.id)
+
+
     @bot.callback_query_handler(func=lambda call: call.data == "adm_del_btn")
     def cb_delete_list(call):
         print(f"DEBUG: cb_delete_list triggered with data: {call.data}")
@@ -376,7 +355,6 @@ def cb_edit_list(call):
             bot.answer_callback_query(call.id, "⚠️ لا توجد أزرار مضافة لحذفها حالياً!", show_alert=True)
             return
 
-        # ترتيب 3 أزرار في السطر
         markup = telebot.types.InlineKeyboardMarkup(row_width=3)
         btn_list = [
             telebot.types.InlineKeyboardButton(text=b_name, callback_data=f"ask_del_btn_{b_id}")
@@ -392,8 +370,7 @@ def cb_edit_list(call):
         )
         bot.answer_callback_query(call.id)
 
-
-    # 2. طلب تأكيد حذف الزر قبل التنفيذ
+    # طلب تأكيد حذف الزر
     @bot.callback_query_handler(func=lambda call: call.data.startswith("ask_del_btn_"))
     def cb_ask_delete_btn(call):
         user_id = call.from_user.id
@@ -407,7 +384,6 @@ def cb_edit_list(call):
             return
         btn_name = btn_info[0][0]
 
-        # أزرار التأكيد والإلغاء
         markup = telebot.types.InlineKeyboardMarkup(row_width=2)
         markup.add(
             telebot.types.InlineKeyboardButton(text="✅ نعم، احذف", callback_data=f"exec_del_btn_{btn_id}"),
@@ -422,8 +398,7 @@ def cb_edit_list(call):
         )
         bot.answer_callback_query(call.id)
 
-
-    # 3. التنفيذ الفعلي لحذف الزر بعد التأكيد
+    # التنفيذ الفعلي لحذف الزر
     @bot.callback_query_handler(func=lambda call: call.data.startswith("exec_del_btn_"))
     def cb_execute_del_btn(call):
         user_id = call.from_user.id
@@ -449,7 +424,6 @@ def cb_edit_list(call):
             )
             return
 
-        # إعادة عرض الأزرار المتبقية (3 في كل سطر وبدون كلمة حذف)
         markup = telebot.types.InlineKeyboardMarkup(row_width=3)
         btn_list = [
             telebot.types.InlineKeyboardButton(text=b_name, callback_data=f"ask_del_btn_{b_id}")
@@ -464,8 +438,7 @@ def cb_edit_list(call):
             reply_markup=markup
         )
 
-
-    # 4. طلب تأكيد حذف ملف فردي
+    # طلب تأكيد حذف ملف فردي
     @bot.callback_query_handler(func=lambda call: call.data.startswith("delfile_"))
     def cb_ask_delete_single_file(call):
         user_id = call.from_user.id
@@ -490,8 +463,7 @@ def cb_edit_list(call):
         )
         bot.answer_callback_query(call.id)
 
-
-    # 5. التنفيذ الفعلي لحذف ملف فردي
+    # التنفيذ الفعلي لحذف ملف فردي
     @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_delfile_"))
     def cb_confirm_delete_single_file(call):
         user_id = call.from_user.id
@@ -511,8 +483,7 @@ def cb_edit_list(call):
             reply_markup=make_admin_file_manager_markup(btn_id)
         )
 
-
-    # 6. طلب تأكيد حذف جميع الملفات
+    # طلب تأكيد حذف جميع الملفات
     @bot.callback_query_handler(func=lambda call: call.data.startswith("delallfiles_"))
     def cb_ask_delete_all_files(call):
         user_id = call.from_user.id
@@ -536,8 +507,7 @@ def cb_edit_list(call):
         )
         bot.answer_callback_query(call.id)
 
-
-    # 7. التنفيذ الفعلي لحذف جميع الملفات
+    # التنفيذ الفعلي لحذف جميع الملفات
     @bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_delallfiles_"))
     def cb_confirm_delete_all_files(call):
         user_id = call.from_user.id
@@ -556,8 +526,7 @@ def cb_edit_list(call):
             reply_markup=make_admin_file_manager_markup(btn_id)
         )
 
-
-    # 8. معالج إلغاء حذف الملفات (العودة لمدير الملفات)
+    # معالج إلغاء حذف الملفات
     @bot.callback_query_handler(func=lambda call: call.data.startswith("cancel_delfile_"))
     def cb_cancel_delfile(call):
         user_id = call.from_user.id
@@ -569,7 +538,7 @@ def cb_edit_list(call):
         )
         bot.answer_callback_query(call.id, "تم إلغاء عملية الحذف.")
         
-
+    # اختيار زر للتعديل
     @bot.callback_query_handler(func=lambda call: call.data.startswith("choose_edit_"))
     def cb_choose_edit(call):
         user_id = call.from_user.id
@@ -588,8 +557,8 @@ def cb_edit_list(call):
         )
         bot.answer_callback_query(call.id)
 
-    # 1️⃣ معالج بدء طلب تعديل الاسم (يلتقط adm_edit_btn)
-    @bot.callback_query_handler(func=lambda call: call.data.startswith("adm_edit_btn"))
+    # 1️⃣ معالج بدء طلب تعديل الاسم (يلتقط editopt_name_ و adm_edit_name_)
+    @bot.callback_query_handler(func=lambda call: call.data.startswith("editopt_name_") or call.data.startswith("adm_edit_name_"))
     def cb_edit_name_init(call):
         try:
             user_id = call.from_user.id
@@ -597,7 +566,6 @@ def cb_edit_list(call):
             if not is_admin_or_alert(call, perms, 'can_settings'): 
                 return
 
-            # 🔍 استخراج ID الزر بأمان من نهاية الـ callback_data
             parts = call.data.split("_")
             btn_id = int(parts[-1]) if parts[-1].isdigit() else None
 
@@ -605,7 +573,6 @@ def cb_edit_list(call):
                 bot.answer_callback_query(call.id, "❌ متعذر تحديد رقم الزر!", show_alert=True)
                 return
 
-            # 📝 حفظ الحالة في قاعدة البيانات بنجاح
             set_user_state(user_id, "WAITING_EDIT_NAME", {"button_id": btn_id})
 
             bot.edit_message_text(
@@ -620,22 +587,19 @@ def cb_edit_list(call):
             print(f"❌ [cb_edit_name_init Error]: {e}")
             bot.answer_callback_query(call.id, "❌ حدث خطأ أثناء فتح واجهة التعديل.", show_alert=True)
 
-
-    # 2️⃣ معالج استقبال الاسم الجديد (استخدام html.escape الآمن)
+    # 2️⃣ معالج استقبال الاسم الجديد
     @bot.message_handler(func=check_state("WAITING_EDIT_NAME"), content_types=['text'])
     def process_edit_name(message):
         print("🔥 EDIT NAME HANDLER ACTIVATED")
         user_id = message.from_user.id
 
         try:
-            # 🔒 فحص الصلاحية
             perms = get_permissions(user_id)
             if not perms.get('can_settings'):
                 clear_user_state(user_id)
                 bot.reply_to(message, "❌ ليس لديك صلاحية تعديل الإعدادات.")
                 return
 
-            # 🗄️ جلب حالة المستخدم
             state_res = get_user_state(user_id)
             if not state_res:
                 return
@@ -654,17 +618,14 @@ def cb_edit_list(call):
                 bot.reply_to(message, "❌ حدث خطأ: تعذر تحديد الزر المطلوب.")
                 return
 
-            # 🔄 تحديث الاسم في قاعدة البيانات
             execute_query(
                 "UPDATE buttons SET name = %s WHERE id = %s;",
                 (new_name, btn_id),
                 commit=True
             )
 
-            # 🧹 تفريغ الحالة
             clear_user_state(user_id)
 
-            # ✉️ إرسال تأكيد النجاح مع التهريب عبر html.escape
             bot.send_message(
                 user_id,
                 f"✅ تم تعديل اسم الزر بنجاح إلى:\n<b>{html.escape(new_name)}</b>",
@@ -676,7 +637,7 @@ def cb_edit_list(call):
             print(f"❌ [process_edit_name Error]: {e}")
             clear_user_state(user_id)
             bot.reply_to(message, f"❌ حدث خطأ أثناء تعديل الاسم:\n<code>{e}</code>", parse_mode="HTML")
-        
+
     @bot.callback_query_handler(func=lambda call: call.data.startswith("editopt_msg_"))
     def cb_edit_msg_init(call):
         user_id = call.from_user.id
@@ -704,9 +665,7 @@ def cb_edit_list(call):
         clear_user_state(user_id)
         bot.send_message(user_id, "✅ تم تعديل الرسالة النصية للزر بنجاح!", reply_markup=get_edit_markup(btn_id))
 
-    # ==========================================
     # تعديل موضع زر شبكياً (السطر والترتيب الأفقي)
-    # ==========================================
     @bot.callback_query_handler(func=lambda call: call.data.startswith("editopt_row_"))
     def cb_edit_row_init(call):
         user_id = call.from_user.id
@@ -897,19 +856,18 @@ def cb_edit_list(call):
             reply_markup=get_edit_markup(btn_id)
         )
 
-# يجب أن تبدأ من العمود الأول (بدون أي مسافات في البداية)
-@bot.message_handler(commands=['allow'])
-def cmd_allow_user(message):
-    user_id = message.from_user.id
-    if user_id != OWNER_ID and user_id not in ADMIN_IDS:
-        return
-        
-    parts = message.text.split()
-    if len(parts) < 2 or not parts[1].isdigit():
-        bot.send_message(user_id, "❌ الاستخدام الصحيح:\n/allow <user_id>")
-        return
-        
-    target_id = int(parts[1])
-    execute_query("INSERT INTO whitelist_users (user_id) VALUES (%s) ON CONFLICT DO NOTHING;", (target_id,), commit=True)
-    bot.send_message(user_id, f"✅ تم السماح للمستخدم صاحب الـ ID ({target_id}) باستخدام البوت بنجاح دون الحاجة للانضمام للقناة.")
-    
+    @bot.message_handler(commands=['allow'])
+    def cmd_allow_user(message):
+        user_id = message.from_user.id
+        if user_id != OWNER_ID and user_id not in ADMIN_IDS:
+            return
+            
+        parts = message.text.split()
+        if len(parts) < 2 or not parts[1].isdigit():
+            bot.send_message(user_id, "❌ الاستخدام الصحيح:\n/allow <user_id>")
+            return
+            
+        target_id = int(parts[1])
+        execute_query("INSERT INTO whitelist_users (user_id) VALUES (%s) ON CONFLICT DO NOTHING;", (target_id,), commit=True)
+        bot.send_message(user_id, f"✅ تم السماح للمستخدم صاحب الـ ID ({target_id}) باستخدام البوت بنجاح دون الحاجة للانضمام للقناة.")
+
