@@ -210,14 +210,22 @@ def register_admin_handlers():
     def process_btn_name(message):
         user_id = message.from_user.id
         perms = get_permissions(user_id)
+
         if not perms['can_settings']:
             clear_user_state(user_id)
             return
+
         btn_name = message.text.strip()
-        clear_user_state(user_id)
+
+        # حفظ اسم الزر مؤقتًا في حالة المستخدم
+        set_user_state(user_id, "WAITING_PARENT", {
+            "button_name": btn_name
+        })
+
         bot.send_message(
-            user_id, f"📂 حدد موقع الزر الجديد [ {btn_name} ] في الشجرة الهيكلية:",
-            reply_markup=make_admin_choose_parent_markup(btn_name)
+            user_id,
+            f"📂 حدد موقع الزر الجديد [ {btn_name} ] في الشجرة الهيكلية:",
+            reply_markup=make_admin_choose_parent_markup()
         )
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("setparent_new_"))
