@@ -107,7 +107,7 @@ def make_admin_edit_options_markup(button_id):
     return markup
 
 
-    def make_admin_choose_parent_markup(exclude_id=None):
+def make_admin_choose_parent_markup(exclude_id=None):
         markup = InlineKeyboardMarkup(row_width=1)
 
         # القائمة الرئيسية
