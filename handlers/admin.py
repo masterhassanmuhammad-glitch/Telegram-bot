@@ -224,12 +224,31 @@ def register_admin_handlers():
         perms = get_permissions(user_id)
         if not is_admin_or_alert(call, perms, 'can_settings'): return
 
-        state = get_user_state(user_id)
-        if not state or state["state"] != "WAITING_PARENT":
+        state_res = get_user_state(user_id)
+        if not state_res:
             bot.answer_callback_query(call.id, "❌ انتهت العملية أو تم إلغاؤها.", show_alert=True)
             return
 
-        btn_name = state["data"]["button_name"]
+        # تفكيك الناتج سواء كان tuple أو dict
+        if isinstance(state_res, (tuple, list)):
+            state_name = state_res[0]
+            data = state_res[1] if len(state_res) > 1 else {}
+        elif isinstance(state_res, dict):
+            state_name = state_res.get("state")
+            data = state_res.get("data", {})
+        else:
+            state_name = state_res
+            data = {}
+
+        if state_name != "WAITING_PARENT":
+            bot.answer_callback_query(call.id, "❌ انتهت العملية أو تم إلغاؤها.", show_alert=True)
+            return
+
+        btn_name = data.get("button_name")
+        if not btn_name:
+            bot.answer_callback_query(call.id, "❌ تعذر تحديد اسم الزر، يرجى المحاولة مجدداً.", show_alert=True)
+            return
+
         parent_raw = call.data.split("_")[1]
         parent_id = None if parent_raw == "null" else int(parent_raw)
 
@@ -248,7 +267,7 @@ def register_admin_handlers():
             reply_markup=get_cancel_markup()
         )
         bot.answer_callback_query(call.id)
-        
+            
     @bot.message_handler(func=check_state("WAITING_BTN_ROW"), content_types=['text'])
     def process_btn_row(message):
         user_id = message.from_user.id
