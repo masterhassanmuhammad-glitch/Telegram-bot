@@ -107,24 +107,39 @@ def make_admin_edit_options_markup(button_id):
     return markup
 
 
-def make_admin_choose_parent_markup(button_name, exclude_id=None):
-    markup = InlineKeyboardMarkup(row_width=1)
-    
-    short_name = button_name[:15]
-    
-    markup.add(InlineKeyboardButton(text="📁 في القائمة الرئيسية مباشرة", callback_data=f"setparent_new_{short_name}_null"))
-    
-    if exclude_id:
-        all_buttons = execute_query("SELECT id, name FROM buttons WHERE id != %s ORDER BY id ASC;", (exclude_id,), fetch=True)
-    else:
-        all_buttons = execute_query("SELECT id, name FROM buttons ORDER BY id ASC;", fetch=True)
-        
-    for b_id, b_name in all_buttons:
-        markup.add(InlineKeyboardButton(text=f"📁 داخل [ {b_name} ]", callback_data=f"setparent_new_{short_name}_{b_id}"))
-        
-    return markup
+    def make_admin_choose_parent_markup(exclude_id=None):
+        markup = InlineKeyboardMarkup(row_width=1)
 
+        # القائمة الرئيسية
+        markup.add(
+            InlineKeyboardButton(
+                text="📁 في القائمة الرئيسية مباشرة",
+                callback_data="setparent_null"
+            )
+        )
 
+        if exclude_id:
+            all_buttons = execute_query(
+                "SELECT id, name FROM buttons WHERE id != %s ORDER BY id ASC;",
+                (exclude_id,),
+                fetch=True
+            )
+        else:
+            all_buttons = execute_query(
+                "SELECT id, name FROM buttons ORDER BY id ASC;",
+                fetch=True
+            )
+
+        for b_id, b_name in all_buttons:
+            markup.add(
+                InlineKeyboardButton(
+                    text=f"📁 داخل [ {b_name} ]",
+                    callback_data=f"setparent_{b_id}"
+                )
+            )
+
+        return markup
+        
 def make_admin_move_button_markup(button_id):
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(InlineKeyboardButton(text="📁 نقل إلى القائمة الرئيسية", callback_data=f"exec_move_{button_id}_null"))
