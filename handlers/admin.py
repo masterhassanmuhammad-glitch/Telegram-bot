@@ -604,16 +604,45 @@ def cb_edit_list(call):
     @bot.message_handler(func=check_state("WAITING_EDIT_NAME"), content_types=['text'])
     def process_edit_name(message):
         user_id = message.from_user.id
+
+        print("DEBUG: process_edit_name started")
+
         perms = get_permissions(user_id)
         if not perms['can_settings']:
             clear_user_state(user_id)
+            print("DEBUG: No permission")
             return
+
         state, data = get_user_state(user_id)
+
+        print("DEBUG: State:", state)
+        print("DEBUG: Data:", data)
+
         btn_id = data.get('button_id')
         new_name = message.text.strip()
-        execute_query("UPDATE buttons SET name = %s WHERE id = %s;", (new_name, btn_id), commit=True)
+
+        print("DEBUG: Button ID:", btn_id)
+        print("DEBUG: New name:", new_name)
+
+        execute_query(
+            "UPDATE buttons SET name = %s WHERE id = %s;",
+            (new_name, btn_id),
+            commit=True
+        )
+
+        print("DEBUG: Database updated")
+
         clear_user_state(user_id)
-        bot.send_message(user_id, "✅ تم تعديل اسم الزر بنجاح!", reply_markup=get_edit_markup(btn_id))
+
+        print("DEBUG: State cleared")
+
+        bot.send_message(
+            user_id,
+            "✅ تم تعديل اسم الزر بنجاح!",
+            reply_markup=get_edit_markup(btn_id)
+        )
+
+        print("DEBUG: Message sent")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith("editopt_msg_"))
     def cb_edit_msg_init(call):
