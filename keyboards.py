@@ -108,7 +108,7 @@ def make_admin_edit_options_markup(button_id):
 
 
 def make_admin_choose_parent_markup(exclude_id=None):
-    markup = InlineKeyboardMarkup(row_width=1)
+    markup = InlineKeyboardMarkup()
 
     # القائمة الرئيسية
     markup.add(
@@ -130,27 +130,50 @@ def make_admin_choose_parent_markup(exclude_id=None):
             fetch=True
         )
 
-    for b_id, b_name in all_buttons:
-        markup.add(
-            InlineKeyboardButton(
-                text=f"📁 داخل [ {b_name} ]",
-                callback_data=f"setparent_{b_id}"
+    if all_buttons:
+        btn_list = []
+        for b_id, b_name in all_buttons:
+            btn_list.append(
+                InlineKeyboardButton(
+                    text=f"📁 {b_name}",
+                    callback_data=f"setparent_{b_id}"
+                )
             )
-        )
+        
+        # عرض 3 أزرار في كل سطر
+        for i in range(0, len(btn_list), 3):
+            markup.row(*btn_list[i:i+3])
 
     return markup
+
         
 def make_admin_move_button_markup(button_id):
-    markup = InlineKeyboardMarkup(row_width=1)
+    markup = InlineKeyboardMarkup()
+    
+    # نقل إلى القائمة الرئيسية
     markup.add(InlineKeyboardButton(text="📁 نقل إلى القائمة الرئيسية", callback_data=f"exec_move_{button_id}_null"))
     
     other_buttons = execute_query("SELECT id, name FROM buttons WHERE id != %s ORDER BY id ASC;", (button_id,), fetch=True)
-    for ob_id, ob_name in other_buttons:
-        markup.add(InlineKeyboardButton(text=f"📁 داخل [ {ob_name} ]", callback_data=f"exec_move_{button_id}_{ob_id}"))
+    
+    if other_buttons:
+        btn_list = []
+        for ob_id, ob_name in other_buttons:
+            btn_list.append(
+                InlineKeyboardButton(
+                    text=f"📁 {ob_name}",
+                    callback_data=f"exec_move_{button_id}_{ob_id}"
+                )
+            )
         
-    markup.add(InlineKeyboardButton(text="🔙 إلغاء ونكوص", callback_data=f"choose_edit_{button_id}"))
+        # عرض 3 أزرار في كل سطر
+        for i in range(0, len(btn_list), 3):
+            markup.row(*btn_list[i:i+3])
+        
+    # زر الإلغاء في الأسفل
+    markup.add(InlineKeyboardButton(text="🔙 إلغاء وعودة", callback_data=f"choose_edit_{button_id}"))
+    
     return markup
-
+    
 
 def make_admin_file_manager_markup(button_id):
     markup = InlineKeyboardMarkup(row_width=1)
