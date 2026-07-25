@@ -108,37 +108,37 @@ def make_admin_edit_options_markup(button_id):
 
 
 def make_admin_choose_parent_markup(exclude_id=None):
-        markup = InlineKeyboardMarkup(row_width=1)
+    markup = InlineKeyboardMarkup(row_width=1)
 
-        # القائمة الرئيسية
+    # القائمة الرئيسية
+    markup.add(
+        InlineKeyboardButton(
+            text="📁 في القائمة الرئيسية مباشرة",
+            callback_data="setparent_null"
+        )
+    )
+
+    if exclude_id:
+        all_buttons = execute_query(
+            "SELECT id, name FROM buttons WHERE id != %s ORDER BY id ASC;",
+            (exclude_id,),
+            fetch=True
+        )
+    else:
+        all_buttons = execute_query(
+            "SELECT id, name FROM buttons ORDER BY id ASC;",
+            fetch=True
+        )
+
+    for b_id, b_name in all_buttons:
         markup.add(
             InlineKeyboardButton(
-                text="📁 في القائمة الرئيسية مباشرة",
-                callback_data="setparent_null"
+                text=f"📁 داخل [ {b_name} ]",
+                callback_data=f"setparent_{b_id}"
             )
         )
 
-        if exclude_id:
-            all_buttons = execute_query(
-                "SELECT id, name FROM buttons WHERE id != %s ORDER BY id ASC;",
-                (exclude_id,),
-                fetch=True
-            )
-        else:
-            all_buttons = execute_query(
-                "SELECT id, name FROM buttons ORDER BY id ASC;",
-                fetch=True
-            )
-
-        for b_id, b_name in all_buttons:
-            markup.add(
-                InlineKeyboardButton(
-                    text=f"📁 داخل [ {b_name} ]",
-                    callback_data=f"setparent_{b_id}"
-                )
-            )
-
-        return markup
+    return markup
         
 def make_admin_move_button_markup(button_id):
     markup = InlineKeyboardMarkup(row_width=1)
