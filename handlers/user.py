@@ -93,8 +93,10 @@ def register_user_handlers():
         clear_user_state(user_id)
 
         # التحقق أولاً: إذا لم يكن في القناة، أرسل رسالة الانضمام واقطع التنفيذ فوراً دون حفظه
-        
 
+        if not is_user_in_batch(bot, user_id):
+            send_join_request_menu(bot, chat_id)
+            return
         # الحفظ في قاعدة البيانات يتم هنا فقط بعد تخطي الفحص بنجاح
         execute_query(
             """
