@@ -890,3 +890,53 @@ def register_admin_handlers():
         execute_query("INSERT INTO whitelist_users (user_id) VALUES (%s) ON CONFLICT DO NOTHING;", (target_id,), commit=True)
         bot.send_message(user_id, f"✅ تم السماح للمستخدم صاحب الـ ID ({target_id}) باستخدام البوت بنجاح دون الحاجة للانضمام للقناة.")
 
+    # 1. أمر لبدء عملية المراسلة المباشرة
+    @bot.message_handler(commands=['sendto'])
+    def cmd_send_to_user(message):
+        user_id = message.from_user.id
+        perms = get_permissions(user_id)
+        
+        # التأكد من صلاحيات المشرف
+        if not perms.get('can_settings'): 
+            return
+
+        parts = message.text.split()
+        if len(parts) < 2:
+            bot.reply_to(message, "❌ الاستخدام الصحيح:\n`/sendto <user_id>`", parse_mode="Markdown")
+            return
+
+        target_id = parts[1]
+        if not target_id.isdigit():
+            bot.reply_to(message, "❌ المعرف (ID) يجب أن يكون أرقاماً فقط.")
+            return
+
+        # حفظ الحالة لانتظار نص الرسالة
+        set_user_state(user_id, "WAITING_DIRECT_MSG", {"target_user_id": int(target_id)})
+        bot.send_message(
+            user_id, 
+            f"✍️ أرسل الآن نص الرسالة التي تريد إرسالها للمستخدم `{target_id}`:", 
+            reply_markup=get_cancel_markup(), 
+            parse_mode="Markdown"
+        )
+
+    # 2. معالج استقبال نص الرسالة وإرسالها للمستخدم
+    @bot.message_handler(func=check_state("WAITING_DIRECT_MSG"), content_types=['text'])
+    def process_direct_message(message):
+        user_id = message.from_user.id
+        perms = get_permissions(user_id)
+        
+        if not perms.get('can_settings'):
+            clear_user_state(user_id)
+            return
+
+        state, data = get_user_state(user_id)
+        target_user_id = data.get('target_user_id')
+
+        try:
+            bot.send_message(target_user_id, f"📨 **رسالة من الإدارة:**\n\n{message.text}", parse_mode="Markdown")
+            bot.send_message(user_id, f"✅ تم إرسال الرسالة إلى المستخدم `{target_user_id}` بنجاح.", parse_mode="Markdown")
+        except Exception as e:
+            bot.send_message(user_id, f"❌ فشل الإرسال (ربما قام المستخدم بحظر البوت أو المعرف خاطئ).\nالخطأ: `{str(e)}`", parse_mode="Markdown")
+
+        clear_user_state(user_id)
+        
