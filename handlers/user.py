@@ -23,46 +23,63 @@ PAGE_SIZE = 10  # عدد الملفات في كل صفحة
 def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, base_text=""):
     offset = (page - 1) * PAGE_SIZE
     
-    # 1. جلب إجمالي عدد الملفات المرتبطة بهذا الزر
     count_res = execute_query("SELECT COUNT(*) FROM button_files WHERE button_id = %s;", (button_id,), fetch=True)
     total_files = count_res[0][0] if count_res else 0
     
     if total_files == 0:
         return False
         
-    # حساب إجمالي عدد الصفحات
     total_pages = (total_files + PAGE_SIZE - 1) // PAGE_SIZE
     
-    # 2. جلب ملفات الصفحة الحالية فقط
     files = execute_query(
         "SELECT file_id, file_type FROM button_files WHERE button_id = %s ORDER BY id ASC LIMIT %s OFFSET %s;",
         (button_id, PAGE_SIZE, offset), fetch=True
     )
     
-    # 3. إرسال الملفات للمستخدم أولاً مع إضافة اليوزرنيم
+    # تحويل نوع الملف إلى حروف صغيرة لضمان المطابقة، مع إضافة حماية بديلة
     for file_id, file_type in files:
+        f_type = (file_type or 'document').lower()
+        sent_successfully = False
+        
         try:
-            if file_type == 'document': bot.send_document(chat_id, file_id, caption="@Sudanmedicinebot")
-            elif file_type == 'photo': bot.send_photo(chat_id, file_id, caption="@Sudanmedicinebot")
-            elif file_type == 'audio': bot.send_audio(chat_id, file_id, caption="@Sudanmedicinebot")
-            elif file_type == 'video': bot.send_video(chat_id, file_id, caption="@Sudanmedicinebot")
-            elif file_type == 'voice': bot.send_voice(chat_id, file_id, caption="@Sudanmedicinebot")
+            if f_type == 'document':
+                bot.send_document(chat_id, file_id, caption="@Sudanmedicinebot")
+                sent_successfully = True
+            elif f_type == 'photo':
+                bot.send_photo(chat_id, file_id, caption="@Sudanmedicinebot")
+                sent_successfully = True
+            elif f_type == 'audio':
+                bot.send_audio(chat_id, file_id, caption="@Sudanmedicinebot")
+                sent_successfully = True
+            elif f_type == 'video':
+                bot.send_video(chat_id, file_id, caption="@Sudanmedicinebot")
+                sent_successfully = True
+            elif f_type == 'voice':
+                bot.send_voice(chat_id, file_id, caption="@Sudanmedicinebot")
+                sent_successfully = True
+            else:
+                bot.send_document(chat_id, file_id, caption="@Sudanmedicinebot")
+                sent_successfully = True
         except Exception as e:
-            print(f"Error sending file {file_id}: {str(e)}")
+            print(f"❌ Error sending file {file_id}: {str(e)}")
             
-    # 4. دمج التحكم بالصفحات مع أزرار المجلد المستقبلة
+        # محاولة أخيرة بديلة إذا فشل الإرسال الأساسي
+        if not sent_successfully:
+            try:
+                bot.send_document(chat_id, file_id, caption="@Sudanmedicinebot")
+            except Exception as e2:
+                print(f"❌ Fallback failed: {e2}")
+            
     markup = sub_menu_markup if sub_menu_markup is not None else types.InlineKeyboardMarkup()
     
-    # إضافة زر "التالي ▶️" فقط إذا وُجدت صفحات تالية
     if page < total_pages:
         markup.row(types.InlineKeyboardButton(text="التالي ▶️", callback_data=f"files_{button_id}_{page+1}"))
     
-    # بناء نص الرسالة الموحدة المكتملة
     full_text = f"{base_text}\n\n📑 مجموعة الملفات: [ {page} من {total_pages} ]\n📦 إجمالي الملفات في هذا القسم: {total_files} ملف."
     
     bot.send_message(chat_id, full_text, reply_markup=markup)
     return True
-
+            
 
 # 🛠️ الدالة الرئيسية لتسجيل كل معالجات المستخدم (User Handlers)
 def register_user_handlers():
