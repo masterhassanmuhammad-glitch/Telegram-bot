@@ -12,8 +12,6 @@ from database import (
 )
 from keyboards import make_main_menu_markup, make_sub_menu_markup
 from .helpers import (
-    is_user_in_batch,
-    send_join_request_menu,
     get_permissions,
     check_state
 )
@@ -69,7 +67,7 @@ def send_button_files_page(chat_id, button_id, page=1, sub_menu_markup=None, bas
 # 🛠️ الدالة الرئيسية لتسجيل كل معالجات المستخدم (User Handlers)
 def register_user_handlers():
 
-    # 1. أمر البدء (مع الحذف الفوري لرسالة الـ /start وتسجيل اللوج)
+    # 1. أمر البدء (بدون قيود اشتراك أو طلب هاتف)
     @bot.message_handler(commands=['start'])
     def cmd_start(message):
         chat_id = message.chat.id
@@ -92,10 +90,7 @@ def register_user_handlers():
 
         clear_user_state(user_id)
 
-         # التحقق أولاً: إذا لم يكن في القناة، أرسل رسالة الانضمام واقطع التنفيذ فوراً دون حفظه
-
-
-        # الحفظ في قاعدة البيانات يتم هنا فقط بعد تخطي الفحص بنجاح
+        # الحفظ في قاعدة البيانات مباشرة دون أي شروط مسبقة
         execute_query(
             """
             INSERT INTO users (user_id, username, first_name, last_name)
@@ -110,87 +105,11 @@ def register_user_handlers():
             commit=True
         )
 
-        res = execute_query("SELECT phone_number FROM users WHERE user_id = %s;", (user_id,), fetch=True)
-        has_phone = bool(res and res[0][0])
-
-        if not has_phone:
-            ask_for_phone(chat_id, user_id)
-            return
-
+        # الانتقال المباشر للقائمة الرئيسية
         show_main_menu(chat_id, user_id)
-
-    # 2. وظيفة طلب رقم الهاتف
-    def ask_for_phone(chat_id, user_id):
-        set_user_state(user_id, "WAITING_PHONE")
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-        markup.add(types.KeyboardButton("📱 مشاركة رقم الهاتف", request_contact=True))
-        
-        bot.send_message(
-            chat_id,
-            "⚠️ أهلاً بك يا دكتور! لاستكمال استخدام البوت، يرجى مشاركة رقم هاتفك بالضغط على الزر أدناه 👇",
-            reply_markup=markup
-        )
-
-    # 3. معالجة إرسال الرقم
-    @bot.message_handler(func=check_state("WAITING_PHONE"), content_types=['contact'])
-    def process_phone_number(message):
-        user_id = message.from_user.id
-        if message.contact.user_id != user_id:
-            bot.reply_to(message, "❌ يرجى مشاركة رقم هاتفك الشخصي فقط.")
-            return
-            
-        phone_number = message.contact.phone_number
-        execute_query("UPDATE users SET phone_number = %s WHERE user_id = %s;", (phone_number, user_id), commit=True)
-        clear_user_state(user_id)
-        
-        bot.send_message(message.chat.id, "✅ تم تسجيل رقمك بنجاح. شكراً لك!", reply_markup=types.ReplyKeyboardRemove())
-        show_main_menu(message.chat.id, user_id)
-
-    # 4. زر التحقق من العضوية (المحدث لتسجيل البيانات عند النجاح)
-    @bot.callback_query_handler(func=lambda call: call.data == "check_membership")
-    def handle_check_membership(call):
-        user_id = call.from_user.id
-        chat_id = call.message.chat.id
-        
-        if is_user_in_batch(bot, user_id):
-            bot.answer_callback_query(call.id, "✅ تم التحقق من عضويتك!", show_alert=True)
-            
-            try: bot.delete_message(chat_id, call.message.message_id)
-            except Exception: pass
-            
-            # بما أنه نجح بالتحقق الآن، نقوم بإدراج بياناته في قاعدة البيانات لأول مرة
-            username = call.from_user.username or "NoUsername"
-            first_name = call.from_user.first_name or ""
-            last_name = call.from_user.last_name or ""
-            
-            execute_query(
-                """
-                INSERT INTO users (user_id, username, first_name, last_name)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (user_id)
-                DO UPDATE SET 
-                    username = EXCLUDED.username,
-                    first_name = EXCLUDED.first_name,
-                    last_name = EXCLUDED.last_name;
-                """,
-                (user_id, username, first_name, last_name),
-                commit=True
-            )
-            
-            res = execute_query("SELECT phone_number FROM users WHERE user_id = %s;", (user_id,), fetch=True)
-            if not (res and res[0][0]):
-                ask_for_phone(chat_id, user_id)
-            else:
-                show_main_menu(chat_id, user_id)
-        else:
-            bot.answer_callback_query(call.id, "عذراً، أنت لست عضواً في كلية الطب من الدفعتين 35&36", show_alert=True)
 
     # 5. عرض القائمة الرئيسية (الحارس المركزي للمنيو)
     def show_main_menu(chat_id, user_id):
-        # التحقق من انضمام المستخدم للدفعة
-
-
-        # جلب الصلاحيات وبناء القائمة
         perms = get_permissions(user_id)
         
         text = """🏛️ القائمة الرئيسية
@@ -366,28 +285,18 @@ def register_user_handlers():
         
         show_main_menu(message.chat.id, user_id)
 
-    # 🤖 8. معالج الرد التلقائي عبر الذكاء الاصطناعي (يوضع دائماً في النهاية للتقاط أي نص عادي)
-    # 🟢 التعديل في السطر الأول فقط (إضافة الشرط لمنع التقاط الأوامر)
+    # 🤖 8. معالج الرد التلقائي عبر الذكاء الاصطناعي
     @bot.message_handler(func=lambda message: message.text and not message.text.startswith('/'), content_types=['text'])
     def auto_ai_handler(message):
         print(f"📩 [Received] User: {message.from_user.username or message.from_user.id} | Text: {message.text}")
 
-    # 🚫 1. تجاهل المجموعات والقنوات
+        # 🚫 1. تجاهل المجموعات والقنوات
         if message.chat.type in ['group', 'supergroup']:
             return
 
-    # 🚫 2. تجاهل الحالات الإدارية والتفاعلية
+        # 🚫 2. تجاهل الحالات الإدارية والتفاعلية
         if get_user_state(message.from_user.id):
             return
-
-        text = message.text.strip()
-        if not text:
-            return
-    
-    # ... باقي كود الدالة كما هو دون تغيير ...
-        
-    # ... باقي كود الدالة كما هو دون تغيير ...
-        
 
         text = message.text.strip()
         if not text:
@@ -463,4 +372,4 @@ def register_user_handlers():
             except Exception:
                 pass
             bot.reply_to(message, "❌ حدث خطأ أثناء معالجة الطلب.")
-    
+        
